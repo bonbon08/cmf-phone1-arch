@@ -782,18 +782,20 @@ static bool session_locked(void)
 	return !strncmp(buf, "yes", 3);
 }
 
-/* the panel backlight level is 0 while the display is off */
+/* DRM's DPMS state of the panel: Phosh blanks through the composer, which switches it;
+ * the backlight level stays, and the display driver's wakelock is only held while
+ * frames are drawn */
 static bool display_on(void)
 {
-	FILE *f = fopen("/sys/class/leds/lcd-backlight/brightness", "r");
-	int level = 0;
+	FILE *f = fopen("/sys/class/drm/card0-DSI-1/dpms", "r");
+	char state[8] = "";
 
 	if (f) {
-		if (fscanf(f, "%d", &level) != 1)
-			level = 0;
+		if (!fgets(state, sizeof(state), f))
+			state[0] = 0;
 		fclose(f);
 	}
-	return level > 0;
+	return !strncmp(state, "On", 2);
 }
 
 static void overlay(const char *action)

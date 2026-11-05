@@ -1,0 +1,53 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Screenshot with both volume keys held together (Power + Volume down turns the
+# display off in Phosh). Reads the key devices without grabbing them, so Phosh still
+# sees the keys; saves with grim to ~/Pictures/Screenshots and shows a notification.
+import os, select, struct, subprocess, time
+
+EV_KEY, KEY_VOLUMEDOWN, KEY_VOLUMEUP = 1, 114, 115
+FMT = "llHHi"
+SIZE = struct.calcsize(FMT)
+
+
+def key_devices():
+    devs = []
+    for name in sorted(os.listdir("/dev/input")):
+        if not name.startswith("event"):
+            continue
+        try:
+            caps = open(f"/sys/class/input/{name}/device/capabilities/key").read().split()
+        except OSError:
+            continue
+        bits = int("".join(f"{int(w, 16):016x}" for w in caps), 16)
+        if bits >> KEY_VOLUMEDOWN & 1 or bits >> KEY_VOLUMEUP & 1:
+            devs.append(os.open(f"/dev/input/{name}", os.O_RDONLY))
+    return devs
+
+
+def screenshot():
+    d = os.path.expanduser("~/Pictures/Screenshots")
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, time.strftime("Screenshot_%Y%m%d_%H%M%S.png"))
+    if subprocess.run(["grim", path]).returncode == 0:
+        subprocess.run(["notify-send", "-a", "Screenshot", "-i", "camera-photo-symbolic",
+                        "Screenshot saved", os.path.basename(path)])
+
+
+held, last = set(), 0.0
+devs = key_devices()
+while True:
+    for fd in select.select(devs, [], [])[0]:
+        data = os.read(fd, SIZE * 64)
+        for i in range(0, len(data) - SIZE + 1, SIZE):
+            _, _, typ, code, value = struct.unpack(FMT, data[i:i + SIZE])
+            if typ != EV_KEY or code not in (KEY_VOLUMEDOWN, KEY_VOLUMEUP):
+                continue
+            if value:
+                held.add(code)
+            else:
+                held.discard(code)
+            if held == {KEY_VOLUMEDOWN, KEY_VOLUMEUP} and time.monotonic() - last > 2:
+                last = time.monotonic()
+                time.sleep(1.2)  # let the volume pop-up go away
+                screenshot()

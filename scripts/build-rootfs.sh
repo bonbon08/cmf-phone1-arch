@@ -174,6 +174,7 @@ arch-chroot "$MNT" /bin/bash -euxo pipefail -c "
     systemctl enable sshd NetworkManager ModemManager systemd-networkd tetris-phosh tetris-growfs tetris-wlan bluetooth tetris-boot-success tetris-bt-bridge tetris-modem tetris-cpuidle tetris-vibra tetris-torch tetris-sensors tetris-splash-stop tetris-usb-role tetris-gpu-clean-shutdown
     systemctl mask iio-sensor-proxy  # no IIO sensors here; tetris-sensors serves its D-Bus API
     systemctl --global enable sm.puri.Chatty-daemon  # SMS arrive while the Chats window is closed
+    systemctl --global enable tetris-screenshot   # both volume keys: screenshot
     systemctl set-default graphical.target
     if [[ $PROFILE != phone ]]; then
         usermod -aG docker alarm

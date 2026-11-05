@@ -1,0 +1,11 @@
+[Unit]
+Description=Screenshot with both volume keys (tetris-screenshot)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/tetris-screenshot
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target
