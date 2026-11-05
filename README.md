@@ -25,6 +25,7 @@ used through [libhybris](https://github.com/libhybris/libhybris).
 | Audio (speaker, mic) | ✅ | UCM config. The phone has no 3.5 mm jack; analog headsets via a passive USB-C adapter should be detected (codec "Headset Jack"), untested |
 | Vibration | ✅ | feedbackd through a force-feedback bridge (`tetris-vibra`) |
 | Torch | ✅ | Phosh quick setting (`tetris-torch`, flash LED via uleds) |
+| Screenshots | ✅ | Hold both volume keys (`tetris-screenshot`, saved to `~/Pictures/Screenshots`) |
 | Cameras | ✅ | Main (50 MP), front, and the rear IR depth sensor; own app **Kamera** with an IR false-colour mode |
 | Mobile data (LTE) | ✅ | ModemManager with our plugin for the MediaTek modem, IPv4 + IPv6; works without configuring an APN |
 | SIM PIN, SMS receive | ✅ | Chats (Chatty) |
