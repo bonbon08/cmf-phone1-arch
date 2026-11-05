@@ -18,10 +18,10 @@ Subject: [PATCH] hwcomposer backend + hybris gralloc allocator for libhybris (CM
  render/egl.c                     |  54 +++++++++
  render/gles2/pass.c              |   9 ++
  render/gles2/renderer.c          |  58 ++++++++--
- render/gles2/texture.c           |  14 +++
+ render/gles2/texture.c           |  15 +++
  render/hybris_wl_buffer.c        | 137 +++++++++++++++++++++++
  render/wlr_renderer.c            |  38 ++++++-
- 19 files changed, 1193 insertions(+), 10 deletions(-)
+ 19 files changed, 1194 insertions(+), 10 deletions(-)
 
 diff --git a/backend/backend.c b/backend/backend.c
 index 3d84aa6..c4c0bb2 100644
@@ -1226,7 +1226,7 @@ index e362dae..393f036 100644
  		free(renderer);
  		return NULL;
 diff --git a/render/gles2/texture.c b/render/gles2/texture.c
-index 9a967eb..752aa72 100644
+index 9a967eb..9e7fc91 100644
 --- a/render/gles2/texture.c
 +++ b/render/gles2/texture.c
 @@ -11,7 +11,9 @@
@@ -1239,14 +1239,15 @@ index 9a967eb..752aa72 100644
  #include "render/pixel_format.h"
  
  static const struct wlr_texture_impl texture_impl;
-@@ -416,6 +418,18 @@ struct wlr_texture *gles2_texture_from_buffer(struct wlr_renderer *wlr_renderer,
+@@ -416,6 +418,19 @@ struct wlr_texture *gles2_texture_from_buffer(struct wlr_renderer *wlr_renderer,
  	uint32_t format;
  	size_t stride;
  	struct wlr_dmabuf_attributes dmabuf;
 +#if HAVE_HWCOMPOSER
-+	if (wlr_buffer_is_hybris_wl(buffer)) {
-+		// android_wlegl client buffer: same EGLImage path as a dma-buf
-+		// (gles2_buffer_get_or_create imports it); only size/alpha are used
++	if (wlr_buffer_is_hybris_wl(buffer) || wlr_buffer_is_hybris(buffer)) {
++		// android_wlegl client buffer, or one of our own gralloc buffers (e.g. the
++		// output's, read back for screencopy): same EGLImage path as a dma-buf
++		// (gles2_buffer_get_or_create imports both); only size/alpha are used
 +		struct wlr_dmabuf_attributes attribs = {
 +			.width = buffer->width,
 +			.height = buffer->height,
