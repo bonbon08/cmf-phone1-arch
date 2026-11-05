@@ -1,0 +1,8 @@
+/* CMF Phone 1: spot over the under-display fingerprint sensor on the Phosh lock screen
+ * (display pixels 540,2109 radius 93 at scale 2). It lights the finger for the optical
+ * sensor; tetris-fpd switches high brightness on when a finger is on it. Phosh keeps
+ * other clients' overlays below its lock screen, so the lock screen draws it itself. */
+phosh-lockscreen {
+  background-image: radial-gradient(circle 46px at 50% 87.875%, white 97%, transparent 100%);
+  background-repeat: no-repeat;
+}

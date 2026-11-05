@@ -7,6 +7,8 @@ After=tetris-fp.service
 ExecStart=/usr/local/bin/tetris-fpd
 # never leave the touch controller in fingerprint mode or the panel in high brightness
 ExecStopPost=-/bin/sh -c "echo 0 > /proc/touchpanel/fod_mode; echo 0 > /sys/panel_feature/ui_status; echo 0 > /sys/panel_feature/hbm_mode"
+# tetris-fp exits 3 after cleaning up on SIGTERM
+SuccessExitStatus=3
 Restart=on-failure
 RestartSec=5
 

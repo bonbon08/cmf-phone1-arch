@@ -112,6 +112,9 @@ install -d -m700 -o 1000 -g 1000 "$MNT/home/alarm/.ssh"
 cat "$P/out/ssh/id_ed25519.pub" $(compgen -G "$HOME_DIR/.ssh/*.pub" || true) \
     > "$MNT/home/alarm/.ssh/authorized_keys"
 chown 1000:1000 "$MNT/home/alarm/.ssh/authorized_keys"; chmod 600 "$MNT/home/alarm/.ssh/authorized_keys"
+# Lock screen spot for the fingerprint sensor (also in /etc/skel for new users)
+install -Dm644 -o 1000 -g 1000 "$MNT/etc/skel/.config/gtk-3.0/gtk.css" "$MNT/home/alarm/.config/gtk-3.0/gtk.css"
+chown 1000:1000 "$MNT/home/alarm/.config" "$MNT/home/alarm/.config/gtk-3.0"
 
 if (( ! FINISH )); then
 echo "== packages (in aarch64 chroot via qemu)"

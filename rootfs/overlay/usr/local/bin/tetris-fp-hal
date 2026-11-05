@@ -7,12 +7,30 @@ for i in $(seq 60); do
     [ "$($A /system/bin/getprop servicemanager.ready 2>/dev/null)" = true ] && break
     sleep 1
 done
+# A failed HAL start (e.g. before the TEE was up) removes the sensor's device node;
+# binding the driver again creates it
+if [ ! -e /dev/goodix_fp ] && [ -e /sys/bus/spi/drivers/goodix_fp ]; then
+    echo spi1.0 > /sys/bus/spi/drivers/goodix_fp/unbind 2>/dev/null
+    echo spi1.0 > /sys/bus/spi/drivers/goodix_fp/bind
+    sleep 1
+fi
+# the container has its own /dev: make sure the node is there too
+R=$(lxc-info -n android -p -H)
+if [ -e /dev/goodix_fp ] && [ ! -e "/proc/$R/root/dev/goodix_fp" ]; then
+    $A /system/bin/mknod /dev/goodix_fp c $(stat -c '%t %T' /dev/goodix_fp | awk '{printf "%d %d", "0x"$1, "0x"$2}')
+fi
 # Owners as in the vendor ueventd.rc/init.mt6878.rc (system = 1000); the container has
 # its own /dev, procfs and sysfs entries are shared with the host
 $A /system/bin/chown system:system /dev/goodix_fp /dev/mobicore /dev/mobicore-user
 $A /system/bin/chmod 0660 /dev/goodix_fp /dev/mobicore-user
 chown 1000:1000 /proc/touchpanel/fod_mode /sys/panel_feature/hbm_mode /sys/panel_feature/ui_status
 $A /system/bin/setprop ctl.start mobicore
+# the Goodix trusted app needs the secure drivers mcDriverDaemon loads first; a HAL
+# started earlier fails ("tlApi_callDriverEx fails, error=0x202")
+for i in $(seq 30); do
+    $A /system/bin/logcat -d -s TeeMcDaemon 2>/dev/null | grep -q "Daemon running" && break
+    sleep 1
+done
 $A /system/bin/setprop ctl.start tee-1-1
 $A /system/bin/setprop ctl.start vendor.gatekeeper-default
 for i in $(seq 30); do
