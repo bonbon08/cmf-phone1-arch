@@ -1,0 +1,44 @@
+diff --git a/drivers/input/touchscreen/FT3519/focaltech_core.c b/drivers/input/touchscreen/FT3519/focaltech_core.c
+index bcad871..f58c604 100644
+--- a/drivers/input/touchscreen/FT3519/focaltech_core.c
++++ b/drivers/input/touchscreen/FT3519/focaltech_core.c
+@@ -1832,6 +1832,14 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
+     return 0;
+ }
+ 
++/*
++ * Tetris Linux: how the TP went to suspend. Resume used to decide by the current
++ * gesture/FOD flags, but userspace (the fingerprint HAL) may set the FOD mode while the
++ * display is off: after a plain sleep (IRQ disabled) resume then took the gesture path,
++ * which never re-enables the IRQ, and touch stayed dead until a reboot.
++ */
++static bool fts_suspended_in_gesture;
++
+ static int fts_ts_suspend(struct device *dev)
+ {
+     int ret = 0;
+@@ -1851,7 +1859,8 @@ static int fts_ts_suspend(struct device *dev)
+ 
+     fts_esdcheck_suspend(ts_data);
+ 
+-    if ((ts_data->gesture_support)||(ts_data->Fod_support)){
++    fts_suspended_in_gesture = ts_data->gesture_support || ts_data->Fod_support;
++    if (fts_suspended_in_gesture) {
+         fts_gesture_suspend(ts_data);
+     } else {
+         fts_irq_disable();
+@@ -1904,10 +1913,13 @@ static int fts_ts_resume(struct device *dev)
+ 
+     fts_esdcheck_resume(ts_data);
+ 
+-    if (ts_data->gesture_support || (ts_data->Fod_support)) {
++    if (fts_suspended_in_gesture) {
+         fts_gesture_resume(ts_data);
+     } else {
+         fts_irq_enable();
++        /* FOD mode set while asleep: the reset above cleared it in the IC */
++        if (ts_data->Fod_support != FTS_FOD_DISABLE)
++            fts_write_reg(FTS_REG_FOD_EN, FTS_REG_FOD_VALUE);
+     }
+     if (ts_data->pocket_mode) {
+         fts_write_reg(FTS_REG_POWER_MODE, 0);

@@ -811,13 +811,20 @@ static void unlockd(AIBinder *session)
 	AIBinder *cancel = NULL;
 	bool spent = false;
 	int64_t op = 0;
+	int on_ticks = 0;
 
 	for (;;) {
 		int ret, secs = 0;
 
-		if (!display_on())
+		if (!display_on()) {
 			spent = false;
-		if (spent || !find_session() || !session_locked() || !display_on()) {
+			on_ticks = 0;
+		} else if (on_ticks < 3) {
+			on_ticks++;
+		}
+		/* start only once the display has been on for a while (~1.5 s): the touch
+		 * controller resumes with it and should be fully up before we switch modes */
+		if (spent || on_ticks < 3 || !find_session() || !session_locked()) {
 			usleep(500000);
 			continue;
 		}
