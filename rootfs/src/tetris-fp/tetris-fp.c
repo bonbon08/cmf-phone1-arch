@@ -560,6 +560,10 @@ struct sensor {
  * touchscreen directly (libinput in phoc doesn't grab it); tetris-fp-overlay draws the
  * spot. */
 
+/* only while an enroll/authenticate operation runs: otherwise a tap on the sensor spot
+ * would switch the panel to high brightness for nothing */
+static volatile bool g_scanning;
+
 struct touch_args {
 	AIBinder *session;
 	struct sensor *sensor;
@@ -650,7 +654,7 @@ static void *touch_thread(void *arg)
 		else if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
 			int64_t dx = x - t->sensor->x, dy = y - t->sensor->y;
 			int64_t r = t->sensor->radius;
-			bool on = touching && dx * dx + dy * dy <= r * r;
+			bool on = g_scanning && touching && dx * dx + dy * dy <= r * r;
 
 			if (on && !down) {
 				p.x = x;
@@ -703,6 +707,7 @@ static void set_cancel(AIBinder *cancel)
 			noop_destroy, noop_transact));
 	g_cancel = cancel;
 	g_scanned = true;
+	g_scanning = true;
 }
 
 static bool st_finished(void)
@@ -713,6 +718,7 @@ static bool st_finished(void)
 
 static void cleanup(void)
 {
+	g_scanning = false;
 	if (g_cancel)
 		call(g_cancel, 1, "cancel", NULL, NULL, NULL, NULL);
 	if (g_scanned) {
@@ -776,23 +782,18 @@ static bool session_locked(void)
 	return !strncmp(buf, "yes", 3);
 }
 
-/* the display driver holds this wakelock while the panel is on */
+/* the panel backlight level is 0 while the display is off */
 static bool display_on(void)
 {
-	FILE *f = fopen("/sys/kernel/debug/wakeup_sources", "r");
-	char line[256], name[64];
-	long v[5];
-	bool on = false;
+	FILE *f = fopen("/sys/class/leds/lcd-backlight/brightness", "r");
+	int level = 0;
 
-	while (f && fgets(line, sizeof(line), f))
-		if (sscanf(line, "%63s %ld %ld %ld %ld %ld", name, &v[0], &v[1], &v[2], &v[3],
-			   &v[4]) == 6 && !strcmp(name, "disp_crtc0_wakelock")) {
-			on = v[4] > 0;
-			break;
-		}
-	if (f)
+	if (f) {
+		if (fscanf(f, "%d", &level) != 1)
+			level = 0;
 		fclose(f);
-	return on;
+	}
+	return level > 0;
 }
 
 static void overlay(const char *action)
@@ -853,6 +854,7 @@ static void unlockd(AIBinder *session)
 			wait_done(2);           /* its onError(CANCELED) */
 		}
 		g_cancel = NULL;
+		g_scanning = false;
 		fod_mode(0);
 		panel_feature("ui_status", 0);
 		panel_feature("hbm_mode", 0);
