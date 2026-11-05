@@ -30,7 +30,7 @@ used through [libhybris](https://github.com/libhybris/libhybris).
 | Mobile data (LTE) | ✅ | ModemManager with our plugin for the MediaTek modem, IPv4 + IPv6; works without configuring an APN |
 | SIM PIN, SMS receive | ✅ | Chats (Chatty) |
 | SMS send | ✅ | Chats (Chatty) |
-| Calls | ❌ | Incoming calls don't ring: the modem falls back to 2G for the call but never reports it to Linux. Probably a MediaTek init command is missing. No VoLTE (needs MediaTek's IMS stack). Help welcome |
+| Calls | ❌ | Outgoing calls connect, but without audio; incoming calls exist only on MediaTek's MIPC channel, not on AT, so ModemManager never sees them. Details in `rootfs/src/tetris-mipc`. Help welcome |
 | Standby (suspend) | ❌ | The SoC hangs in deep sleep. The screen can still turn off, but the CPU stays awake |
 | GPS | 🟡 | MediaTek GNSS HAL + `tetris-gnss` feed geoclue (receiver on only while an app asks). Satellites are found, a first fix not confirmed yet |
 | Fingerprint | ✅ | Under-display sensor unlocks the Phosh lock screen (`tetris-fpd`); enroll with `sudo tetris-fp enroll`. Goodix HAL + Trustonic TEE, two kernel patches. The whole screen brightens while scanning. The phone has no NFC |

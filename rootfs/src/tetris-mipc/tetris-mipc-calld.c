@@ -17,11 +17,19 @@
  *   CALL_STATUS_IND           0x4901: logged, to see what the modem does next
  * mipc_msg_t header: sim/ps byte at +8, message id at +0xa, transaction id at +0xc.
  *
- * STATUS (2026-11-03): work in progress, not installed. The approval command never
- * arrived in tests: the modem falls back to 2G (CSFB) for ~30 s, then reports the call
- * (CALL_STATUS_IND msgType 134, then 1/129/133, cause 16) only as it is released.
- * TETRIS_MIPC_SNIFF=1 logs every modem command/indication; SYS_AT_IND (0x4001) arrives
- * at the CSFB moments, but its text is not in TLVs 0x100-0x10f/0x8100-0x810f.
+ * STATUS (2026-11-05): work in progress, not installed. Findings:
+ * - Outgoing calls work through ModemManager (ATD): the remote phone rings and can answer.
+ *   But no audio (the modem's speech path is not switched on), and the modem sends no
+ *   call progress on AT (no NO CARRIER), so a remote hang-up goes unnoticed.
+ * - Incoming: the modem falls back to 2G (CSFB), creates the call and the caller hears it
+ *   ring, but reports it only on MIPC: CALL_STATUS_IND msgType 134 at once, then
+ *   1/129/133 with cause 16 when the caller hangs up. Nothing on any AT channel (ttyC0,
+ *   C1, C3, C5, C6), not in AT+CLCC, no +EAIC in AT+EAIC=3 mode (default mode 2).
+ *   CALL_APPROVE_INCOMING_CMD never arrives although the cmd handler registers fine.
+ * - So calls need: a MIPC shim (MT call -> RING/CLCC for ModemManager, ATA/AT+CHUP ->
+ *   MIPC answer/hangup, MIPC disconnect -> NO CARRIER), and the speech path: the
+ *   Hostless_Speech DAI plus the speech-on messages Android's audio HAL sends the modem.
+ * TETRIS_MIPC_SNIFF=1 logs every modem command/indication.
  *
  * Build and run on the phone (as root):
  *   gcc -O2 -o tetris-mipc-calld tetris-mipc-calld.c -I/opt/libhybris/include \
