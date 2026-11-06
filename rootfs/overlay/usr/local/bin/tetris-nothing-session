@@ -25,7 +25,9 @@ if [ "$(cat /run/tetris-phosh/mode 2>/dev/null)" = gpu ]; then
         CHILD="env -u LD_LIBRARY_PATH -u HYBRIS_LD_LIBRARY_PATH -u WLR_BACKENDS"
     else
         # GTK4 would pick Vulkan (only lavapipe here): force its GL renderer on the Mali GPU
-        CHILD="env -u WLR_BACKENDS EGL_PLATFORM=wayland GSK_RENDERER=gl GDK_DISABLE=vulkan"
+        # nothing-wm drops the library path after its start (for Xwayland), so the shell and
+        # its apps get it back here
+        CHILD="env -u WLR_BACKENDS LD_LIBRARY_PATH=$LD_LIBRARY_PATH HYBRIS_LD_LIBRARY_PATH=$HYBRIS_LD_LIBRARY_PATH EGL_PLATFORM=wayland GSK_RENDERER=gl GDK_DISABLE=vulkan"
     fi
 else
     export WLR_RENDERER=pixman
