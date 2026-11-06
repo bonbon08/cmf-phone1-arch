@@ -34,4 +34,6 @@ fi
 
 # nothing-wm runs its -s command with the compositor's environment; the apps (and the shell
 # with them) take the child environment chosen above.
-exec /usr/bin/nothing-wm -s "exec $CHILD nothing-session-start"
+# compositor log to the journal (wlroots' input and seat messages); NOTHING_WM_DEBUG=1 adds detail
+export NOTHING_WM_DEBUG=1
+exec systemd-cat -t nothing-wm /usr/bin/nothing-wm -s "exec $CHILD nothing-session-start"
