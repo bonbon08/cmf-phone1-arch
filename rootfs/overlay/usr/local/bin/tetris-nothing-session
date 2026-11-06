@@ -1,0 +1,37 @@
+#!/bin/sh
+# Session of the Nothing shell on the phone, started by tetris-phosh.service instead of Phosh
+# when /etc/tetris-shell says "nothing". nothing-wm takes phoc's place: the same wlroots 0.20
+# (our hwcomposer backend in GPU mode, DRM + pixman in software mode), and the same GPU/software
+# choice from tetris-phosh-select. The shell itself picks the portrait phone layout
+# (shell/nothing_de/phone.py) because the screen is upright.
+: "${DBUS_SESSION_BUS_ADDRESS:=unix:path=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus}"
+export DBUS_SESSION_BUS_ADDRESS
+[ -n "$XDG_SESSION_ID" ] && systemctl --user import-environment XDG_SESSION_ID
+export XDG_CURRENT_DESKTOP=Nothing XDG_SESSION_DESKTOP=nothing XDG_SESSION_TYPE=wayland
+
+if [ "$(cat /run/tetris-phosh/mode 2>/dev/null)" = gpu ]; then
+    set -a
+    . /etc/tetris-android/hybris.env
+    set +a
+    # only the GL/hwc2 libs, as in tetris-phosh-session-hwc (libhybris' libvulkan crashes)
+    export LD_LIBRARY_PATH=/opt/tetris-hybris-gl/lib
+    export WLR_BACKENDS=hwcomposer,libinput
+    # whole-frame redraws: partial redraws flash stale parts of older frames
+    export PHOC_DEBUG=damage-whole
+    unset WLR_RENDERER
+    . /etc/tetris-android/gpu-shell 2>/dev/null
+    if [ -n "$TETRIS_APPS_SOFTWARE" ]; then
+        # apps and the shell's children: plain Mesa/CPU, no libhybris
+        CHILD="env -u LD_LIBRARY_PATH -u HYBRIS_LD_LIBRARY_PATH -u WLR_BACKENDS"
+    else
+        # GTK4 would pick Vulkan (only lavapipe here): force its GL renderer on the Mali GPU
+        CHILD="env -u WLR_BACKENDS EGL_PLATFORM=wayland GSK_RENDERER=gl GDK_DISABLE=vulkan"
+    fi
+else
+    export WLR_RENDERER=pixman
+    CHILD="env"
+fi
+
+# nothing-wm runs its -s command with the compositor's environment; the apps (and the shell
+# with them) take the child environment chosen above.
+exec /usr/bin/nothing-wm -s "exec $CHILD nothing-session-start"

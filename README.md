@@ -235,6 +235,28 @@ desktop: just reboot, or press the power key). Known: with the panel out of seat
 can still report seat0 as graphical, and GDM tries (and gives up on) a local login screen
 three times at boot; `tetris-display-off` holds the panel, so nothing shows.
 
+## Nothing shell instead of Phosh
+
+The Nothing desktop ([Nothing_Wayland](https://github.com/bonbon08/Nothing_Wayland)) has a
+phone layout: status bar on top, app grid as home screen, home bar at the bottom, windows
+between them. It runs on the same stack as Phosh (nothing-wm in place of phoc, the same GPU or
+software choice and crash guard). Phosh stays installed.
+
+```sh
+scripts/setup-nothing.sh ~/Nothing_Wayland   # needs wlroots0.20 (ours) on the phone
+sudo reboot                                  # on the phone
+```
+
+Back to Phosh: `sudo rm /etc/tetris-shell && sudo reboot`. The script builds `nothing-de`
+on the phone from a local checkout. The image from `scripts/build-rootfs.sh` does not
+include it yet.
+
+Untested on the phone: the GPU path (hwcomposer backend under nothing-wm), the portrait
+layout and touch input. Missing against Phosh: auto-rotation, and the fingerprint unlock. It is
+wired to Phosh's lock screen (`tetris-fpd` waits for Phosh's LockedHint), and the Nothing lock
+screen does not set that yet, so the password is the only way in. The Phosh settings apps
+are not part of this session either.
+
 ## Risks
 
 - **Never relock the bootloader** while a custom kernel is on the phone or AVB is off.

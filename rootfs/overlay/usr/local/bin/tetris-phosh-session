@@ -3,6 +3,11 @@
 # Phosh runs under the systemd user manager, whose environment lacks this login session's
 # id; without it Phosh doesn't follow logind's Lock/Unlock nor set LockedHint (needed
 # by the fingerprint unlock, tetris-fpd).
+# /etc/tetris-shell = nothing: the Nothing shell instead of Phosh (scripts/setup-nothing.sh).
+# The GPU/software choice and the crash guard above it are the same for both.
+if [ "$(cat /etc/tetris-shell 2>/dev/null)" = nothing ]; then
+    exec /usr/local/bin/tetris-nothing-session
+fi
 : "${DBUS_SESSION_BUS_ADDRESS:=unix:path=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus}"
 export DBUS_SESSION_BUS_ADDRESS
 [ -n "$XDG_SESSION_ID" ] && systemctl --user import-environment XDG_SESSION_ID
