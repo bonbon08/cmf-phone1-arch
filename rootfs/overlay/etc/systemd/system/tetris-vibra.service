@@ -1,5 +1,8 @@
 [Unit]
 Description=Vibration motor as force-feedback input device (for feedbackd)
+# Only with the vendor haptic driver. The RT6010 port (mainline/) provides the force-feedback
+# device itself and claims the chip at boot, so the vendor LED interface is then absent.
+ConditionPathExists=/sys/class/leds/vibrator_nt
 
 [Service]
 ExecStart=/usr/local/bin/tetris-vibra

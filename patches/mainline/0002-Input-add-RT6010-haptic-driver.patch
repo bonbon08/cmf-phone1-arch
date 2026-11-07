@@ -1,0 +1,617 @@
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 782389bd5..ebd5f5a14 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -23450,6 +23450,11 @@ F:	include/linux/rhashtable.h
+ F:	lib/rhashtable.c
+ F:	lib/test_rhashtable.c
+ 
++RICHTEK RT6010 HAPTIC DRIVER
++S:	Maintained
++F:	Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml
++F:	drivers/input/misc/rt6010-haptic.c
++
+ RICOH R5C592 MEMORYSTICK DRIVER
+ M:	Maxim Levitsky <maximlevitsky@gmail.com>
+ S:	Maintained
+diff --git a/drivers/input/misc/Kconfig b/drivers/input/misc/Kconfig
+index 169768e3d..f8085120b 100644
+--- a/drivers/input/misc/Kconfig
++++ b/drivers/input/misc/Kconfig
+@@ -963,6 +963,19 @@ config INPUT_DRV2667_HAPTICS
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called drv2667-haptics.
+ 
++config INPUT_RT6010_HAPTIC
++	tristate "RT6010 haptic driver (LRA actuator)"
++	depends on I2C
++	select INPUT_FF_MEMLESS
++	help
++	  Say Y or M if your device has an RT6010 haptic driver with an
++	  LRA vibration motor, such as the CMF Phone 1. The motor is
++	  exposed as a force-feedback device (FF_RUMBLE). The chip
++	  configuration is read from the firmware file haptic_config.bin.
++
++	  To compile this driver as a module, choose M here: the module
++	  will be called rt6010-haptic.
++
+ config INPUT_HISI_POWERKEY
+ 	tristate "Hisilicon PMIC ONKEY support"
+ 	depends on ARCH_HISI || COMPILE_TEST
+diff --git a/drivers/input/misc/Makefile b/drivers/input/misc/Makefile
+index 1339619f0..7fd7acc7b 100644
+--- a/drivers/input/misc/Makefile
++++ b/drivers/input/misc/Makefile
+@@ -75,6 +75,7 @@ obj-$(CONFIG_INPUT_QNAP_MCU)		+= qnap-mcu-input.o
+ obj-$(CONFIG_INPUT_RAVE_SP_PWRBUTTON)	+= rave-sp-pwrbutton.o
+ obj-$(CONFIG_INPUT_RB532_BUTTON)	+= rb532_button.o
+ obj-$(CONFIG_INPUT_REGULATOR_HAPTIC)	+= regulator-haptic.o
++obj-$(CONFIG_INPUT_RT6010_HAPTIC)	+= rt6010-haptic.o
+ obj-$(CONFIG_INPUT_RETU_PWRBUTTON)	+= retu-pwrbutton.o
+ obj-$(CONFIG_INPUT_RT5120_PWRKEY)	+= rt5120-pwrkey.o
+ obj-$(CONFIG_INPUT_AXP20X_PEK)		+= axp20x-pek.o
+diff --git a/drivers/input/misc/rt6010-haptic.c b/drivers/input/misc/rt6010-haptic.c
+new file mode 100644
+index 000000000..865e00e68
+--- /dev/null
++++ b/drivers/input/misc/rt6010-haptic.c
+@@ -0,0 +1,559 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Driver for the RT6010 haptic driver (LRA actuator, ICSense / Richtek) in the
++ * CMF Phone 1 (Tetris). Mainline port of the vendor driver that Nothing ships in
++ * drivers/misc/haptic (haptic_drv.c, rt6010.c), reduced to what vibration needs:
++ *
++ *  - I2C probe, reset through the enable GPIO, chip id check
++ *  - EFUSE trim (same register sequence as the vendor code)
++ *  - chip configuration from firmware "haptic_config.bin" (waveform, RAM layout,
++ *    gain, boost voltage, pre-f0), written to the chip's RAM
++ *  - RAM playback of waveform 0 at a fixed amplitude, as the vendor
++ *    "activate" path does, exposed as an input force-feedback device (FF_RUMBLE)
++ *
++ * Not ported (vendor-only, not needed for vibration): debugfs/procfs, BEMF and
++ * F0 tracking, the richtap streaming interface, stream/track play modes, the
++ * ADC offset readout, Android hardware_info registration, the framebuffer notifier.
++ *
++ * The vendor driver registers a LED class device "vibrator_nt" with a magic
++ * "activate = 101" value. This driver replaces that interface with input
++ * force-feedback; the magic value stays internal.
++ */
++
++#include <linux/delay.h>
++#include <linux/firmware.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/input.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/regmap.h>
++#include <linux/version.h>
++#include <linux/workqueue.h>
++
++#define RT6010_NAME			"rt6010-haptic"
++#define RT6010_FW_NAME			"haptic_config.bin"
++#define RT6010_MAX_RAM_SIZE		1536
++#define RT6010_EFS_RETRY		3
++#define RT6010_EFS_BYTES		4
++
++/* Register map (rt6010.h of the vendor driver) */
++#define RT6010_REG_DEV_ID		0x00
++#define RT6010_REG_SOFT_RESET		0x02
++#define RT6010_REG_RAM_CFG		0x07
++#define RT6010_REG_RAM_ADDR_L		0x08
++#define RT6010_REG_RAM_ADDR_H		0x09
++#define RT6010_REG_RAM_DATA		0x0A
++#define RT6010_REG_PLAY_MODE		0x11
++#define RT6010_REG_PLAY_CTRL		0x12
++#define RT6010_REG_WAVE_BASE_ADDR_L	0x1C
++#define RT6010_REG_WAVE_BASE_ADDR_H	0x1D
++#define RT6010_REG_LIST_BASE_ADDR_L	0x1E
++#define RT6010_REG_LIST_BASE_ADDR_H	0x1F
++#define RT6010_REG_GAIN_CFG		0x20
++#define RT6010_REG_BEMF_CFG1		0x50
++#define RT6010_REG_BEMF_CFG2		0x51
++#define RT6010_REG_BOOST_CFG1		0x55
++#define RT6010_REG_BOOST_CFG2		0x56
++#define RT6010_REG_BOOST_CFG3		0x57
++#define RT6010_REG_BOOST_CFG4		0x58
++#define RT6010_REG_BOOST_CFG5		0x59
++#define RT6010_REG_PA_CFG1		0x5A
++#define RT6010_REG_PA_CFG2		0x5B
++#define RT6010_REG_PMU_CFG2		0x5C
++#define RT6010_REG_PMU_CFG3		0x5E
++#define RT6010_REG_PMU_CFG4		0x5F
++#define RT6010_REG_OSC_CFG1		0x60
++#define RT6010_REG_EFS_RD_DATA		0x67
++#define RT6010_REG_EFS_ADDR_INDEX	0x68
++#define RT6010_REG_EFS_MODE_CTRL	0x69
++#define RT6010_REG_LRA_F0_CFG1		0x2D
++#define RT6010_REG_LRA_F0_CFG2		0x2E
++#define RT6010_REG_TRIM_EXT_2A		0x2A
++#define RT6010_REG_MAX			0xFF
++
++#define RT6010_PLAY_MODE_RAM		0x01
++#define RT6010_PLAY_GO			0x01
++#define RT6010_PLAY_STOP		0x00
++#define RT6010_EFS_READ			BIT(1)
++
++/* EFUSE layout: each field's offset is also its bit shift in the 32-bit word */
++#define RT6010_EFS_BIAS_1P2V_OFFSET	0x00
++#define RT6010_EFS_BIAS_I_OFFSET	0x04
++#define RT6010_EFS_PMU_LDO_OFFSET	0x08
++#define RT6010_EFS_OSC_LDO_OFFSET	0x09
++#define RT6010_EFS_OSC_OFFSET		0x0A
++#define RT6010_EFS_VERSION_OFFSET	0x1E
++#define RT6010_EFS_BIAS_1P2V_MASK	0x0000000F
++#define RT6010_EFS_BIAS_I_MASK		0x000000F0
++#define RT6010_EFS_PMU_LDO_MASK		0x00000100
++#define RT6010_EFS_OSC_LDO_MASK		0x00000200
++#define RT6010_EFS_OSC_MASK		0x0003FC00
++#define RT6010_EFS_VERSION_MASK		0xC0000000
++
++/* Playlist entry for the vendor "activate" path: RAM play, waveform 0, amplitude 0x7F */
++static const u8 rt6010_playlist[6] = { 0x01, 0x00, 0x7F, 0x00, 0x00, 0x00 };
++
++/* Firmware file "haptic_config.bin": little-endian u32 header, then waveform bytes */
++struct rt6010_config_hdr {
++	__le32 chip_id;
++	__le32 reg_size;
++	__le32 ram_size;
++	__le32 f0;
++	__le32 list_base_addr;
++	__le32 wave_base_addr;
++	__le32 fifo_ae;
++	__le32 fifo_af;
++	__le32 boost_mode;
++	__le32 gain;
++	__le32 boost_vol;
++	__le32 waveform_size;
++	u8 waveform[];
++} __packed;
++
++struct rt6010_haptic {
++	struct i2c_client *client;
++	struct device *dev;
++	struct regmap *regmap;
++	struct gpio_desc *enable;
++	struct input_dev *input;
++	struct work_struct config_work;
++	struct work_struct play_work;
++	struct mutex lock;	/* serialises register sequences and the ready flag */
++	bool ready;
++	bool want_play;		/* set from the effect callback, applied in play_work */
++	u32 chip_id;
++	u32 list_base;
++	u32 wave_base;
++};
++
++static const struct regmap_config rt6010_regmap_config = {
++	.reg_bits = 8,
++	.val_bits = 8,
++	.max_register = RT6010_REG_MAX,
++};
++
++static void rt6010_hw_reset(struct rt6010_haptic *h)
++{
++	gpiod_set_value_cansleep(h->enable, 0);
++	usleep_range(1000, 2000);
++	gpiod_set_value_cansleep(h->enable, 1);
++	usleep_range(1000, 2000);
++}
++
++/* Reads one EFUSE byte; the vendor driver retries the same way */
++static int rt6010_efuse_read(struct rt6010_haptic *h, u8 index, u8 *data)
++{
++	unsigned int val;
++	int i, ret;
++
++	ret = regmap_write(h->regmap, RT6010_REG_EFS_ADDR_INDEX, index);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_EFS_MODE_CTRL, RT6010_EFS_READ);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < RT6010_EFS_RETRY; i++) {
++		usleep_range(10, 20);
++		ret = regmap_read(h->regmap, RT6010_REG_EFS_MODE_CTRL, &val);
++		if (ret)
++			return ret;
++		if (!(val & RT6010_EFS_READ)) {
++			ret = regmap_read(h->regmap, RT6010_REG_EFS_RD_DATA, &val);
++			if (ret)
++				return ret;
++			*data = val;
++			return 0;
++		}
++	}
++	return -ETIMEDOUT;
++}
++
++/* Trim sequence of rt6010_apply_trim() in the vendor driver */
++static int rt6010_apply_trim(struct rt6010_haptic *h)
++{
++	u32 efs = 0, val;
++	u8 byte;
++	int i, ret;
++
++	ret = regmap_write(h->regmap, RT6010_REG_SOFT_RESET, 0x01);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < RT6010_EFS_BYTES; i++) {
++		ret = rt6010_efuse_read(h, i, &byte);
++		if (ret)
++			return ret;
++		efs |= (u32)byte << (8 * i);
++	}
++
++	ret = regmap_read(h->regmap, RT6010_REG_PMU_CFG3, &val);
++	if (ret)
++		return ret;
++	val &= 0x4F;
++	val |= ((efs & RT6010_EFS_OSC_LDO_MASK) >> RT6010_EFS_OSC_LDO_OFFSET) << 7;
++	val |= ((efs & RT6010_EFS_PMU_LDO_MASK) >> RT6010_EFS_PMU_LDO_OFFSET) << 4;
++	ret = regmap_write(h->regmap, RT6010_REG_PMU_CFG3, val);
++	if (ret)
++		return ret;
++
++	val = ((efs & RT6010_EFS_BIAS_1P2V_MASK) >> RT6010_EFS_BIAS_1P2V_OFFSET) << 4;
++	val |= (efs & RT6010_EFS_BIAS_I_MASK) >> RT6010_EFS_BIAS_I_OFFSET;
++	ret = regmap_write(h->regmap, RT6010_REG_PMU_CFG4, val);
++	if (ret)
++		return ret;
++
++	val = ((efs & RT6010_EFS_OSC_MASK) >> RT6010_EFS_OSC_OFFSET) ^ 0x80;
++	ret = regmap_write(h->regmap, RT6010_REG_OSC_CFG1, val);
++	if (ret)
++		return ret;
++
++	/* BEMF_CFG2 is written twice, 0x03 then 0x01, as in the vendor code */
++	ret = regmap_write(h->regmap, RT6010_REG_BEMF_CFG2, 0x03);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_BEMF_CFG2, 0x01);
++	if (ret)
++		return ret;
++
++	ret = regmap_write(h->regmap, RT6010_REG_BOOST_CFG1, 0x01);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_BOOST_CFG2, 0x05);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_BOOST_CFG3, 0x0A);
++	if (ret)
++		return ret;
++
++	/* Register values depend on the EFUSE version, as in the vendor code */
++	if (((efs & RT6010_EFS_VERSION_MASK) >> RT6010_EFS_VERSION_OFFSET) == 0x01) {
++		ret = regmap_write(h->regmap, RT6010_REG_TRIM_EXT_2A, 0x0F);
++		if (ret)
++			return ret;
++		ret = regmap_write(h->regmap, RT6010_REG_BEMF_CFG1, 0x00);
++		if (ret)
++			return ret;
++		ret = regmap_write(h->regmap, RT6010_REG_BOOST_CFG4, 0x50);
++	} else {
++		ret = regmap_write(h->regmap, RT6010_REG_TRIM_EXT_2A, 0x0B);
++		if (ret)
++			return ret;
++		ret = regmap_write(h->regmap, RT6010_REG_BEMF_CFG1, 0x06);
++		if (ret)
++			return ret;
++		ret = regmap_write(h->regmap, RT6010_REG_BOOST_CFG4, 0x58);
++	}
++	if (ret)
++		return ret;
++
++	ret = regmap_write(h->regmap, RT6010_REG_BOOST_CFG5, 0x1C);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_PA_CFG1, 0x2C);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_PA_CFG2, 0x03);
++	if (ret)
++		return ret;
++	return regmap_write(h->regmap, RT6010_REG_PMU_CFG2, 0x1C);
++}
++
++static int rt6010_write_addr(struct rt6010_haptic *h, u32 addr)
++{
++	int ret = regmap_write(h->regmap, RT6010_REG_RAM_ADDR_H, addr >> 8);
++
++	if (ret)
++		return ret;
++	return regmap_write(h->regmap, RT6010_REG_RAM_ADDR_L, addr & 0xFF);
++}
++
++static int rt6010_write_ram(struct rt6010_haptic *h, u32 addr, const u8 *data, u32 len)
++{
++	int ret = rt6010_write_addr(h, addr);
++
++	if (ret)
++		return ret;
++	return regmap_raw_write(h->regmap, RT6010_REG_RAM_DATA, data, len);
++}
++
++/* Applies the firmware configuration; the vendor private_init sequence without the f0 tracking */
++static int rt6010_apply_config(struct rt6010_haptic *h, const struct firmware *fw)
++{
++	const struct rt6010_config_hdr *cfg = (const void *)fw->data;
++	u32 wave_len, list_base, wave_base, val;
++	int ret;
++
++	if (fw->size < sizeof(*cfg))
++		return -EINVAL;
++
++	if (le32_to_cpu(cfg->chip_id) != h->chip_id) {
++		dev_err(h->dev, "firmware is for chip 0x%x, device is 0x%x\n",
++			le32_to_cpu(cfg->chip_id), h->chip_id);
++		return -EINVAL;
++	}
++
++	wave_len = le32_to_cpu(cfg->waveform_size);
++	if (fw->size < sizeof(*cfg) + wave_len)
++		return -EINVAL;
++
++	list_base = le32_to_cpu(cfg->list_base_addr);
++	wave_base = le32_to_cpu(cfg->wave_base_addr);
++	if (wave_base > RT6010_MAX_RAM_SIZE || list_base >= wave_base)
++		return -EINVAL;
++	if (wave_len > RT6010_MAX_RAM_SIZE - wave_base)
++		return -EINVAL;
++
++	ret = regmap_write(h->regmap, RT6010_REG_RAM_CFG, 0x08);
++	if (ret)
++		return ret;
++
++	ret = regmap_write(h->regmap, RT6010_REG_LIST_BASE_ADDR_H, list_base >> 8);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_LIST_BASE_ADDR_L, list_base & 0xFF);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_WAVE_BASE_ADDR_H, wave_base >> 8);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_WAVE_BASE_ADDR_L, wave_base & 0xFF);
++	if (ret)
++		return ret;
++	h->list_base = list_base;
++	h->wave_base = wave_base;
++
++	/* Boot voltage: low nibble of BOOST_CFG3, the high nibble keeps its trim */
++	ret = regmap_read(h->regmap, RT6010_REG_BOOST_CFG3, &val);
++	if (ret)
++		return ret;
++	val = (le32_to_cpu(cfg->boost_vol) & 0x0F) | (val & 0xF0);
++	ret = regmap_write(h->regmap, RT6010_REG_BOOST_CFG3, val);
++	if (ret)
++		return ret;
++
++	ret = regmap_write(h->regmap, RT6010_REG_GAIN_CFG, le32_to_cpu(cfg->gain));
++	if (ret)
++		return ret;
++
++	/* Pre-trim resonance frequency; the vendor code converts it with 1920000 / f0 */
++	val = le32_to_cpu(cfg->f0);
++	ret = regmap_write(h->regmap, RT6010_REG_LRA_F0_CFG2, (val & 0x3F00) >> 8);
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_LRA_F0_CFG1, val & 0xFF);
++	if (ret)
++		return ret;
++
++	return rt6010_write_ram(h, wave_base, cfg->waveform, wave_len);
++}
++
++/* Runs in process context: firmware read and chip bring-up */
++static void rt6010_config_work(struct work_struct *work)
++{
++	struct rt6010_haptic *h = container_of(work, struct rt6010_haptic, config_work);
++	const struct firmware *fw;
++	unsigned int id;
++	int ret;
++
++	ret = request_firmware(&fw, RT6010_FW_NAME, h->dev);
++	if (ret) {
++		dev_err(h->dev, "cannot load %s: %d\n", RT6010_FW_NAME, ret);
++		return;
++	}
++
++	mutex_lock(&h->lock);
++	ret = regmap_read(h->regmap, RT6010_REG_DEV_ID, &id);
++	if (ret) {
++		dev_err(h->dev, "chip id read failed: %d\n", ret);
++		goto out;
++	}
++	h->chip_id = id;
++
++	ret = rt6010_apply_trim(h);
++	if (ret) {
++		dev_err(h->dev, "trim failed: %d\n", ret);
++		goto out;
++	}
++	ret = rt6010_apply_config(h, fw);
++	if (ret) {
++		dev_err(h->dev, "configuration failed: %d\n", ret);
++		goto out;
++	}
++	h->ready = true;
++	dev_info(h->dev, "RT6010 chip 0x%x ready\n", h->chip_id);
++out:
++	mutex_unlock(&h->lock);
++	release_firmware(fw);
++}
++
++/* Starts the vendor "activate" sequence: playlist, RAM mode, GO */
++static int rt6010_start(struct rt6010_haptic *h)
++{
++	int ret;
++
++	ret = rt6010_write_ram(h, h->list_base, rt6010_playlist, sizeof(rt6010_playlist));
++	if (ret)
++		return ret;
++	ret = regmap_write(h->regmap, RT6010_REG_PLAY_MODE, RT6010_PLAY_MODE_RAM);
++	if (ret)
++		return ret;
++	return regmap_write(h->regmap, RT6010_REG_PLAY_CTRL, RT6010_PLAY_GO);
++}
++
++static int rt6010_stop(struct rt6010_haptic *h)
++{
++	return regmap_write(h->regmap, RT6010_REG_PLAY_CTRL, RT6010_PLAY_STOP);
++}
++
++/* Runs in process context: the I2C access may sleep */
++static void rt6010_play_work(struct work_struct *work)
++{
++	struct rt6010_haptic *h = container_of(work, struct rt6010_haptic, play_work);
++	bool want;
++
++	mutex_lock(&h->lock);
++	want = h->want_play;
++	if (h->ready) {
++		if (want)
++			rt6010_start(h);
++		else
++			rt6010_stop(h);
++	}
++	mutex_unlock(&h->lock);
++}
++
++/*
++ * Force-feedback effects are memoryless: the input core calls us with a non-zero
++ * magnitude to start and with zero to stop, and handles the replay length itself.
++ * The callback may run with a spinlock held, so it only records the request.
++ * The strength is ignored, as in the vendor driver, which plays a fixed amplitude.
++ */
++static int rt6010_play_effect(struct input_dev *dev, void *data, struct ff_effect *effect)
++{
++	struct rt6010_haptic *h = input_get_drvdata(dev);
++
++	h->want_play = effect->u.rumble.strong_magnitude | effect->u.rumble.weak_magnitude;
++	schedule_work(&h->play_work);
++	return 0;
++}
++
++static int rt6010_init_input(struct rt6010_haptic *h, const char *name)
++{
++	struct input_dev *input;
++	int ret;
++
++	input = devm_input_allocate_device(h->dev);
++	if (!input)
++		return -ENOMEM;
++
++	input->name = name;
++	input->id.bustype = BUS_I2C;
++	input_set_drvdata(input, h);
++	__set_bit(FF_RUMBLE, input->ffbit);
++
++	ret = input_ff_create_memless(input, NULL, rt6010_play_effect);
++	if (ret)
++		return ret;
++
++	ret = input_register_device(input);
++	if (ret)
++		return ret;
++
++	h->input = input;
++	return 0;
++}
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
++static int rt6010_probe(struct i2c_client *client)
++#else
++/* Linux 6.1 and older (the vendor kernel of the phone) pass the id table entry too */
++static int rt6010_probe(struct i2c_client *client, const struct i2c_device_id *id)
++#endif
++{
++	struct rt6010_haptic *h;
++	int ret;
++
++	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
++		return -EIO;
++
++	h = devm_kzalloc(&client->dev, sizeof(*h), GFP_KERNEL);
++	if (!h)
++		return -ENOMEM;
++
++	h->client = client;
++	h->dev = &client->dev;
++	i2c_set_clientdata(client, h);
++	mutex_init(&h->lock);
++	INIT_WORK(&h->config_work, rt6010_config_work);
++	INIT_WORK(&h->play_work, rt6010_play_work);
++
++	h->regmap = devm_regmap_init_i2c(client, &rt6010_regmap_config);
++	if (IS_ERR(h->regmap))
++		return PTR_ERR(h->regmap);
++
++	h->enable = devm_gpiod_get_optional(&client->dev, "enable", GPIOD_OUT_LOW);
++	if (IS_ERR(h->enable))
++		return dev_err_probe(&client->dev, PTR_ERR(h->enable), "no enable GPIO\n");
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++	if (!h->enable) {
++		/* Vendor device tree names the same pin "gpio-en" (devm_gpiod_get_from_of_node is gone since 6.3) */
++		h->enable = devm_gpiod_get_from_of_node(&client->dev, client->dev.of_node,
++							"gpio-en", 0, GPIOD_OUT_LOW, "rt6010-en");
++		if (IS_ERR(h->enable))
++			return dev_err_probe(&client->dev, PTR_ERR(h->enable), "no enable GPIO\n");
++	}
++#endif
++
++	rt6010_hw_reset(h);
++
++	ret = rt6010_init_input(h, "rt6010-haptic");
++	if (ret)
++		return dev_err_probe(&client->dev, ret, "input device failed\n");
++
++	/* Firmware is loaded from a work item, so probe does not wait for it */
++	schedule_work(&h->config_work);
++	return 0;
++}
++
++static void rt6010_remove(struct i2c_client *client)
++{
++	struct rt6010_haptic *h = i2c_get_clientdata(client);
++
++	cancel_work_sync(&h->config_work);
++	cancel_work_sync(&h->play_work);
++	mutex_lock(&h->lock);
++	if (h->ready)
++		rt6010_stop(h);
++	mutex_unlock(&h->lock);
++}
++
++static const struct of_device_id rt6010_of_match[] = {
++	{ .compatible = "richtek,rt6010" },
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++	{ .compatible = "ics,haptic_rt" },	/* vendor device tree (kernel 6.1) */
++#endif
++	{ }
++};
++MODULE_DEVICE_TABLE(of, rt6010_of_match);
++
++static const struct i2c_device_id rt6010_id[] = {
++	{ "rt6010-haptic" },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, rt6010_id);
++
++static struct i2c_driver rt6010_driver = {
++	.driver = {
++		.name = RT6010_NAME,
++		.of_match_table = rt6010_of_match,
++	},
++	.probe = rt6010_probe,
++	.remove = rt6010_remove,
++	.id_table = rt6010_id,
++};
++module_i2c_driver(rt6010_driver);
++
++MODULE_DESCRIPTION("RT6010 haptic driver for LRA actuators (CMF Phone 1)");
++MODULE_LICENSE("GPL");

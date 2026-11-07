@@ -244,3 +244,12 @@ anwendet.
 | `!! not applied` beim Konfigurieren | eine Option aus `linux.config` wurde nicht übernommen | Abhängigkeit der Option prüfen (`make menuconfig`), dann `build-kernel.sh config` |
 
 Weitere Fehler und Protokolle stehen in [09-fehlersuche.md](09-fehlersuche.md).
+
+## 7.7 Mainline-Port: RT6010-Haptiktreiber
+
+Der Vibrationsmotor des Telefons wird vom Chip RT6010 angesteuert. Der Treiber läuft auf dem
+Vendor-Kernel nativ, hängt aber an eigenen Nothing-Hooks des Kernels. Das Verzeichnis `mainline/` enthält
+einen Port, der gegen Mainline-Linux 7.x baut. Die Patches liegen in `patches/mainline/`: zuerst die
+Device-Tree-Bindung, dann der Treiber. Der Treiber stellt den Motor als Force-Feedback-Gerät bereit, damit
+`feedbackd` ihn direkt nutzen kann und `tetris-vibra` nicht gebraucht wird. Der Port ist **noch nicht auf
+echter Hardware getestet**. Schritte und Stand stehen in [mainline/README.md](../../mainline/README.md).
