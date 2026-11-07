@@ -1,39 +1,57 @@
 #!/usr/bin/env bash
-# Builds the RT6010 haptic module for the phone's current kernel, copies it and the FF test
-# to the phone, swaps the vendor haptic driver for it and vibrates the motor.
+# Tests the RT6010 haptic port on the phone.
 #
-#   mainline/test/deploy-and-test.sh          build, install, test (phone on USB, booted into Arch)
-#   mainline/test/deploy-and-test.sh restore  unload it and bring the vendor driver back
+#   mainline/test/deploy-and-test.sh          test on the running phone (already flashed)
+#   mainline/test/deploy-and-test.sh --flash  build the module and boot images, flash slot b, then test
+#
+# The port is in the initramfs and is loaded before the vendor haptic.ko, so it claims the chip at
+# boot. Unbinding the vendor driver at run time resets the phone (reproduced), so this script never does it.
+# Slot a (Nothing OS) is not touched.
 #
 #   SUDO_PASS=...  if alarm's password is no longer "alarm"
 set -euo pipefail
 R=$(realpath "$(dirname "$0")/../..")
+T=$R/mainline/test
 SSH="$R/scripts/phone-ssh.sh"
 PASS=${SUDO_PASS:-alarm}
-KO=$R/out/rt6010-ko/rt6010-haptic.ko
-PHONE_KO=/tmp/rt6010-haptic.ko
-PHONE_TEST=/tmp/haptic-ff-test.py
-sudo_() { "$SSH" "echo '$PASS' | sudo -S -p '' sh -c '$1'"; }
+scp_() { scp -i "$R/out/ssh/id_ed25519" -o UserKnownHostsFile="$R/out/known_hosts" "$@"; }
+phone_sudo() { "$SSH" "echo '$PASS' | sudo -S -p '' $1"; }
 
-if [[ ${1:-} == restore ]]; then
-    sudo_ 'rmmod rt6010-haptic 2>/dev/null; modprobe haptic && systemctl start tetris-vibra; echo restored; lsmod | grep -E "^haptic" '
-    exit 0
+wait_for_phone() {
+    for _ in $(seq 60); do
+        timeout 6 "$SSH" true 2>/dev/null && return 0
+        sleep 4
+    done
+    echo "phone not reachable over USB" >&2
+    return 1
+}
+
+if [[ ${1:-} == --flash ]]; then
+    "$T/build-for-phone.sh"
+    "$R/scripts/build-debug-boot.sh" > "$R/out/build-debug-boot.log" 2>&1
+    echo "== boot images built (out/debug-*.img)"
+    echo "== rebooting the phone into fastboot"
+    # reboot(2) with the argument "bootloader", as the initramfs reboot-mode tool does
+    "$SSH" "echo '$PASS' | sudo -S -p '' sync; echo '$PASS' | sudo -S -p '' python3 -c 'import ctypes; ctypes.CDLL(None).syscall(142,0xfee1dead,672274793,0xA1B2C3D4,b\"bootloader\")'" >/dev/null 2>&1 || true
+    for _ in $(seq 30); do fastboot devices 2>/dev/null | grep -q . && break; sleep 3; done
+    fastboot devices | grep -q . || { echo "no device in fastboot" >&2; exit 1; }
+    echo "== flashing slot b"
+    "$R/scripts/flash-debug-b.sh"
+    echo "== waiting for the phone to boot"
+    sleep 20
+    wait_for_phone
 fi
 
-"$R/mainline/test/build-for-phone.sh"
+echo "== checking the chip owner"
+owner=$("$SSH" "readlink /sys/bus/i2c/devices/0-005f/driver | xargs -r basename" 2>/dev/null || true)
+if [[ $owner != rt6010-haptic ]]; then
+    echo "chip 0-005f is owned by '${owner:-nothing}', not rt6010-haptic" >&2
+    echo "(build with mainline/test/build-for-phone.sh, then scripts/build-debug-boot.sh and flash with --flash)" >&2
+    exit 1
+fi
+echo "owner: rt6010-haptic"
 
-scp_() { scp -i "$R/out/ssh/id_ed25519" -o UserKnownHostsFile="$R/out/known_hosts" "$@"; }
-scp_ "$KO" "$R/mainline/test/haptic-ff-test.py" "alarm@172.16.42.1:/tmp/"
-
-sudo_ "
-    systemctl stop tetris-vibra 2>/dev/null || true
-    rmmod rt6010-haptic 2>/dev/null || true
-    rmmod haptic_sfdc 2>/dev/null || true
-    rmmod haptic 2>/dev/null || true
-    insmod $PHONE_KO
-    sleep 4
-    dmesg | grep -i 'rt6010\|haptic' | tail -20
-"
+scp_ "$T/haptic-ff-test.py" "alarm@172.16.42.1:/tmp/"
 echo "== vibrating"
-sudo_ "python3 $PHONE_TEST 3 300"
-echo "Done. To go back to the vendor driver: mainline/test/deploy-and-test.sh restore"
+"$SSH" "echo '$PASS' | sudo -S -p '' python3 /tmp/haptic-ff-test.py 3 300"
+echo "Done."

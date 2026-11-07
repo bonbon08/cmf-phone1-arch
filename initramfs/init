@@ -50,6 +50,11 @@ load_stage() { # load_stage <list>  (stock order, deps via modules.dep; each nam
     while read -r m; do
         [ -z "$m" ] && continue
         flog "init: load $m"; echo "load $m" > /dev/pmsg0 2>/dev/null
+        # Our RT6010 haptic port claims the chip before the vendor haptic.ko (stage 1) binds it,
+        # so no unbind is needed later. Unbinding the vendor driver resets the phone.
+        if [ "$m" = haptic.ko ] && [ -e "$MODDIR/rt6010-haptic.ko" ]; then
+            modprobe rt6010-haptic && flog "init: rt6010-haptic claims the chip first"
+        fi
         if modprobe "${m%.ko}"; then loaded=$((loaded+1)); else failed=$((failed+1)); echo "init: FAIL $m"; fi
     done < "$MODDIR/$1"
     echo "init: $1 loaded=$loaded failed=$failed"
