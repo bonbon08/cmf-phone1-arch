@@ -55,6 +55,10 @@ load_stage() { # load_stage <list>  (stock order, deps via modules.dep; each nam
         if [ "$m" = haptic.ko ] && [ -e "$MODDIR/rt6010-haptic.ko" ]; then
             modprobe rt6010-haptic && flog "init: rt6010-haptic claims the chip first"
         fi
+        # Same for the touch controller: the port comes before the vendor focaltech_tp.ko
+        if [ "$m" = focaltech_tp.ko ] && [ -e "$MODDIR/focaltech-ft3519.ko" ]; then
+            modprobe focaltech-ft3519 && flog "init: focaltech-ft3519 claims the touch first"
+        fi
         if modprobe "${m%.ko}"; then loaded=$((loaded+1)); else failed=$((failed+1)); echo "init: FAIL $m"; fi
     done < "$MODDIR/$1"
     echo "init: $1 loaded=$loaded failed=$failed"

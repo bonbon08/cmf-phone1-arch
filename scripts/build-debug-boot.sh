@@ -70,10 +70,10 @@ done < <(find "$KOUT" -name '*.ko')
 
 # Stock order isn't dependency order (Android's init modprobes via modules.dep),
 # so generate modules.dep for our set and let busybox modprobe resolve deps.
-# RT6010 haptic port (mainline/test/build-for-phone.sh), loaded by init before haptic.ko
-if [[ -f $P/out/rt6010-ko/rt6010-haptic.ko ]]; then
-    "$STRIP" --strip-debug -o "$MD/rt6010-haptic.ko" "$P/out/rt6010-ko/rt6010-haptic.ko"
-fi
+# Mainline-style ports (mainline/test/build-for-phone.sh), claimed by init before the vendor drivers
+for ko in "$P"/out/rt6010-ko/*.ko; do
+    [[ -f $ko ]] && "$STRIP" --strip-debug -o "$MD/$(basename "$ko")" "$ko"
+done
 
 depmod -b "$R" -F "$KOUT/System.map" -e "$KVER" 2>&1 | grep -v 'needs unknown symbol' | head -20 || true
 echo "unresolved symbols: $(depmod -n -b "$R" -F "$KOUT/System.map" -e "$KVER" 2>&1 >/dev/null | grep -c 'needs unknown symbol')"

@@ -319,6 +319,7 @@ is still tied to the Nothing kernel. "Blocker" says what has to change first. St
 | GPS first fix | open | Satellites are found; a fix is not confirmed. Needs a test outdoors and a check of `tetris-gnss` |
 | Headset jack | open | Analog headsets via a USB-C adapter, untested |
 | Battery gauge oops | open | `mt6375_battery` can NULL-dereference in `__wake_up_common` from `coulomb_irq` and reset the phone. Root cause not found; the probe path is correct. A pstore log of this is kept in `out/` |
+| Touch on mainline | in progress | `mainline/drivers/input/touchscreen/focaltech-ft3519.c` claims the FT3519 at boot (chip id 0x54, 1080x2400, 10 slots) and reports touches. Missing: gestures, double-tap wake, and the FOD/fingerprint mode of the vendor driver (the fingerprint unlock may depend on it, to be checked) |
 | Vibration on mainline | in progress | The port builds for 7.3 and runs on 6.1. Mainline-only check still open |
 
 ### What a mainline 7.x kernel needs
@@ -330,7 +331,7 @@ is still tied to the Nothing kernel. "Blocker" says what has to change first. St
 | Haptics (RT6010) | vendor `haptic` driver, ~4400 lines | port in `mainline/drivers/input/misc/rt6010-haptic.c` | mainline 7.3 builds; runs on 6.1 | in progress |
 | Battery / charger | vendor `mt6375` gauge and charger, patched (`patches/kernel_device_modules/0001`) | check whether 7.x has MT6375 support | the gauge crash above | open |
 | Display panels | vendor `s6e8fc3x02` and others, HBM patch `0003` | upstream DRM panel drivers, plus the HBM notification | the notification to the fingerprint driver is ours | open |
-| Touch | vendor `focaltech` ft3519 with resume patch `0004` | check for an upstream focaltech driver | the resume fix has to be carried over | open |
+| Touch | vendor `focaltech` ft3519 with resume patch `0004`; basic port in `mainline/` runs on 6.1 | the basic read path works on the phone (chip 0x54). Gestures and FOD are missing; the resume fix `0004` has to be carried over | gestures and FOD (fingerprint mode) | in progress |
 | Sensors | SCP sensor hub `/dev/hf_manager` (vendor) | an upstream sensor-hub driver, or keep the vendor one | `tetris-sensors` talks to `/dev/hf_manager` | blocked |
 | Audio codec | MT6369 plus aw882xx, UCM profile | ALSA codec drivers for MT6369 and aw882xx | patch `0002` (mixer switch read) | open |
 | GPU (Mali-G615) | vendor Mali kernel module, used through libhybris | a mainline DRM driver for this GPU | check whether a mainline driver supports the G615. Until then the Halium container and libhybris stay | blocked |
