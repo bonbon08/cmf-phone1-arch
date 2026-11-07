@@ -1,5 +1,7 @@
 # 2. Das Gerät und seine Partitionen
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../02-hardware-and-partitions.md)
+
 Dieses Kapitel beschreibt die Hardware des CMF Phone 1 und den Speicher, auf den das
 Projekt zugreift. Es ist Pflichtlektüre vor dem ersten Flash-Vorgang, denn Fehler bei
 Partitionen gehören zu den folgenreichsten Fehlern überhaupt: Sie können ein Telefon

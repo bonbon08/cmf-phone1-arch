@@ -1,5 +1,7 @@
 # 8. Profile und Betriebsarten
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../08-profiles.md)
+
 Das Telefon kann vier Dinge sein, je nach Einstellung:
 
 1. **Telefon mit Nothing-Shell** (Standard), oder mit **Phosh** als Alternative;

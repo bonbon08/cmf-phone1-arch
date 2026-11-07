@@ -1,5 +1,7 @@
 # 3. Architektur
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../03-architecture.md)
+
 Dieses Kapitel zeigt, wie die Teile des Systems zusammenspielen. Es beschreibt den Weg
 vom Einschalten bis zur Oberfläche, die Rolle des Android-Containers und die beiden
 kritischen Pfade: Grafik und Mobilfunk. Begriffe wie Kernel oder Initramfs sind in

@@ -1,5 +1,7 @@
 # 5. Skript-Referenz
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../05-script-reference.md)
+
 Jedes Skript im Projekt wird hier beschrieben: Zweck, Aufruf, Eingaben, Ausgaben und
 Nebenwirkungen. Die Skripte sind in drei Gruppen eingeteilt:
 

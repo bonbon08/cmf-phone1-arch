@@ -1,5 +1,7 @@
 # 1. Grundlagen: Was hier eigentlich passiert
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../01-basics.md)
+
 Dieses Kapitel ist für Leser ohne technisches Vorwissen. Es erklärt die Bausteine, die in
 den übrigen Kapiteln immer wieder vorkommen. Wer das alles kennt, kann es überspringen.
 

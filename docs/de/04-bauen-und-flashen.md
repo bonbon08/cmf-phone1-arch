@@ -1,5 +1,7 @@
 # 4. Bauen und Flashen: Schritt für Schritt
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../04-build-and-flash.md)
+
 Dieses Kapitel führt vom leeren PC bis zum laufenden Telefon. Es erklärt jeden Schritt,
 seine Ein- und Ausgaben und was dabei schiefgehen kann. Die Skripte selbst beschreibt
 [05-skript-referenz.md](05-skript-referenz.md) im Detail.
@@ -359,7 +361,7 @@ Nach Änderungen am Kernel oder den Modulen:
 | `run as root` bei `build-rootfs.sh` | falscher Aufruf | `sudo scripts/build-rootfs.sh` |
 | `!! device is not k6878v1_64` | falsches Gerät oder Fastboot nicht aktiv | Gerät neu in Fastboot starten, `fastboot getvar product` prüfen |
 | `!! not in fastbootd` | Der Wechsel in fastbootd ist fehlgeschlagen | Skript erneut starten. Das Gerät muss dafür **im Fastboot-Modus** sein |
-| Telefon lehnt Module ab (`Exec format error`, `version magic`) | Module stammen von einem anderen Kernel-Build | `scripts/push-modules.sh` nach dem Kernel-Build, oder `build-kernel.sh all` |
+| Telefon lehnt Module ab (`disagrees about version of symbol`, `Invalid module format`) | Module stammen von einem anderen Kernel-Build | `scripts/push-modules.sh` nach dem Kernel-Build, oder `build-kernel.sh all` |
 | `pacman` schlägt in der chroot fehl | QEMU-Binfmt nicht aktiv | `qemu-user-static-binfmt` installieren und den Dienst `systemd-binfmt` neu starten |
 | Telefon erreicht `172.16.42.1` nicht | USB-Netz des PC nicht eingerichtet | Befehl `nmcli` oben, Kabel prüfen, `ip addr` auf dem PC |
 

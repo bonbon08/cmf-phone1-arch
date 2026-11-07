@@ -1,295 +1,276 @@
-# Installer mit grafischer Oberfläche
+# Graphical installer
 
-Der Installer führt die Skripte aus `scripts/` in der richtigen Reihenfolge aus und zeigt
-dabei ein kleines Fenster mit Fortschritt, Protokoll und Warnungen. Er ersetzt die Skripte
-nicht. Wer den Ablauf von Hand machen will, findet alle Befehle in
-[docs/04-bauen-und-flashen.md](../docs/04-bauen-und-flashen.md).
+**🇬🇧 English** · [🇩🇪 Deutsch](de/README.md)
 
-Der Installer ist für Leute gedacht, die das Telefon einrichten wollen und keine Lust haben,
-zwanzig Befehle in der richtigen Reihenfolge einzutippen. Er kennt die Gefahren, zeigt sie an
-und fragt vor den gefährlichen Schritten nach.
+The installer runs the scripts in `scripts/` in the right order and shows them in a small window with
+progress, log and warnings. It does not replace the scripts. If you want to do the steps by hand, all
+commands are in [docs/04-build-and-flash.md](../docs/04-build-and-flash.md).
 
-> **Achtung:** Die Installation löscht alle Daten auf dem Telefon. Lesen Sie vorher das
-> Kapitel „Risiken“ in [docs/04-bauen-und-flashen.md](../docs/04-bauen-und-flashen.md#42-risiken).
+The installer is meant for people who want to set up the phone without typing twenty commands in the
+right order by hand. It knows the risks, shows them, and asks before the dangerous steps.
 
-## Inhalt
+> **Warning:** the installation erases all data on the phone. Read the section "Risks" in
+> [docs/04-build-and-flash.md](../docs/04-build-and-flash.md#42-risks) first.
 
-- [Was der Installer tut und was nicht](#was-der-installer-tut-und-was-nicht)
-- [Voraussetzungen](#voraussetzungen)
+## Contents
+
+- [What the installer does and does not do](#what-the-installer-does-and-does-not-do)
+- [Requirements](#requirements)
 - [Start](#start)
-- [Die Seiten](#die-seiten)
-- [Betriebsarten](#betriebsarten)
-- [Sicherheit](#sicherheit)
-- [Kommandozeile](#kommandozeile)
-- [Protokolle](#protokolle)
+- [The pages](#the-pages)
+- [Operating modes](#operating-modes)
+- [Safety](#safety)
+- [Command line](#command-line)
+- [Logs](#logs)
 - [Tests](#tests)
-- [Fehler und Lösungen](#fehler-und-lösungen)
-- [Aufbau der Dateien](#aufbau-der-dateien)
+- [Errors and solutions](#errors-and-solutions)
+- [Layout of the files](#layout-of-the-files)
 
-## Was der Installer tut und was nicht
+## What the installer does and does not do
 
-**Tut:**
+**It does:**
 
-- Fragt ab, was Sie möchten (nur bauen, neu installieren, Zweite Stufe, Server, Desktop).
-- Prüft, ob alle Programme und Eingabedateien da sind, bevor etwas läuft.
-- Prüft das Telefon: Fastboot-Modus, USB-Verbindung, Notfall-Shell, Internet.
-- Führt die Schritte in der richtigen Reihenfolge aus. Jeder Schritt ist ein bestehendes Skript
-  aus `scripts/` oder ein `fastboot`-Befehl.
-- Wartet nach dem Neustart des Telefons, bis es per USB antwortet, und fährt dann mit der
-  zweiten Stufe fort.
-- Zeigt die Ausgabe der Skripte live an und speichert sie als Protokoll.
-- Bricht ab, wenn ein Pflichtschritt fehlschlägt. Optionale Schritte (z. B. die NAT-Freigabe)
-  blockieren den Ablauf nicht.
+- asks what you want (build only, reinstall, second stage, server, desktop).
+- checks that all tools and input files are there before anything runs.
+- checks the phone: fastboot mode, USB connection, emergency shell, internet.
+- runs the steps in the right order. Each step is an existing script from `scripts/` or a `fastboot` command.
+- after the phone reboots, waits until it answers over USB, then continues with the second stage.
+- shows the output of the scripts live and saves it as a log.
+- stops when a required step fails. Optional steps (e.g. the NAT sharing) do not block the run.
 
-**Tut nicht:**
+**It does not:**
 
-- Die Original-Firmware (`firmware/`), den Android-Compiler (`toolchain/`) oder das
-  Arch-Linux-ARM-Abbild beschaffen. Das müssen Sie selbst tun (siehe
-  [docs/04, Abschnitt 4.3](../docs/04-bauen-und-flashen.md#43-eingaben-selbst-beschaffen)).
-- Den Bootloader entsperren. Das ist Ihre Entscheidung und hat Folgen für die Garantie und die
-  Daten.
-- Das Telefon in den Fastboot-Modus versetzen. Das müssen Sie mit den Tasten tun (Power und
-  Lautstärke runter). Der Installer sagt Ihnen, wann.
-- Ihre Passwörter speichern. Das sudo-Passwort wird nur im Speicher gehalten.
+- obtain the original firmware (`firmware/`), the Android compiler (`toolchain/`) or the Arch Linux ARM image.
+  You have to get those yourself (see [docs/04, section 4.3](../docs/04-build-and-flash.md#43-getting-the-inputs-yourself)).
+- unlock the bootloader. That is your decision and has consequences for the warranty and your data.
+- put the phone into fastboot mode. You do that with the buttons (Power and Volume down). The installer tells you when.
+- store your passwords. The sudo password is only kept in memory.
 
-## Voraussetzungen
+## Requirements
 
-| Was | Warum | Auf Arch Linux |
+| What | Why | On Arch Linux |
 |---|---|---|
-| Python 3.9 oder neuer | Der Installer ist in Python geschrieben | `python` ist meist schon da |
-| Tkinter (Tk) | das Fenster | `sudo pacman -S tk` |
-| Ein Anzeigeserver (X11 oder Wayland) | das Fenster | auf dem Desktop vorhanden |
-| Die Werkzeuge aus [docs, Abschnitt 4.4](../docs/04-bauen-und-flashen.md#44-host-pakete) | die Skripte brauchen sie | Der Installer zeigt fehlende Werkzeuge auf der Prüfseite |
-| Die Eingaben aus [docs, Abschnitt 4.3](../docs/04-bauen-und-flashen.md#43-eingaben-selbst-beschaffen) | Firmware, Toolchain, Arch-Linux-ARM | Der Installer zeigt fehlende Dateien auf der Prüfseite |
+| Python 3.9 or newer | the installer is written in Python | usually already installed |
+| Tkinter (Tk) | the window | `sudo pacman -S tk` |
+| a display server (X11 or Wayland) | the window | present on a desktop |
+| the tools from [docs, section 4.4](../docs/04-build-and-flash.md#44-host-packages) | the scripts need them | the installer shows missing tools on the check page |
+| the inputs from [docs, section 4.3](../docs/04-build-and-flash.md#43-getting-the-inputs-yourself) | firmware, toolchain, Arch Linux ARM | the installer shows missing files on the check page |
 
-Der Installer prüft beim Start nicht alles. Er zeigt die Prüfseite erst nach der Auswahl, denn
-welche Voraussetzungen nötig sind, hängt von der Betriebsart ab.
+The installer does not check everything at start. It shows the check page only after your selection,
+because which requirements apply depends on the operating mode.
 
 ## Start
 
-Aus dem Repository-Wurzelverzeichnis:
+From the repository root:
 
 ```sh
 python3 installer/tetris_installer.py
 ```
 
-Er funktioniert auch von anderswo, weil er seinen Ort selbst kennt. Die Skripte finden ihre
-Eingaben im Repository.
+It also works from elsewhere, because it knows its own location. The scripts find their inputs inside the repository.
 
-Ein Doppelklick im Dateimanager funktioniert je nach Desktop unterschiedlich. Verlässlich ist
-der Start im Terminal.
+A double-click in the file manager works differently depending on the desktop. Starting from a terminal is reliable.
 
-## Die Seiten
+## The pages
 
-Oben steht immer der Name der Seite und „Schritt x von 5“. Unten sind die Knöpfe **Zurück**
-und **Weiter**.
+The top always shows the name of the page and "Step x of 5". The buttons **Back** and **Next** are at the bottom.
 
-### 1. Willkommen
+### 1. Welcome
 
-Drei Bestätigungen, bevor es weitergeht:
+Three confirmations before you can continue:
 
-- Ich habe ein Backup meiner Daten.
-- Mein Bootloader ist entsperrt.
-- Ich weiß, dass die Installation die Daten löscht (bei Neuinstallation).
+- I have a backup of my data.
+- My bootloader is unlocked.
+- I know that the installation erases the data (for a reinstall).
 
-Ohne alle drei bleibt **Weiter** gesperrt.
+Without all three, **Next** stays disabled.
 
-### 2. Auswahl
+### 2. Selection
 
-Hier wählen Sie:
+Here you choose:
 
-- **Was passieren soll** (Betriebsart, siehe unten).
-- **Profil** des Telefons (Telefon, Server, Desktop). Das Profil bestimmt das Abbild, das
-  gebaut wird.
-- **Halium-Abbild** (`system.img`) für die Zweite Stufe. Der Knopf „Durchsuchen“ hilft. Der
-  Installer schlägt `downloads/halium/system.img` vor, wenn die Datei dort liegt.
-- **Nothing OS vorher schreiben** (nur bei Neuinstallation). Das setzt das Telefon auf den
-  Originalzustand zurück und löscht die Daten.
+- **What should happen** (operating mode, see below).
+- **Profile** of the phone (phone, server, desktop). The profile determines which image is built.
+- **Halium image** (`system.img`) for the second stage. The "Browse" button helps. The installer suggests
+  `downloads/halium/system.img` if the file is there.
+- **Write Nothing OS first** (only for a reinstall). This resets the phone to the original state and erases the data.
 
-Unten zeigt die Vorschau den **genauen Ablauf** mit allen Befehlen. Hier sehen Sie, was
-passieren wird, bevor Sie es starten. Ist die Auswahl nicht sinnvoll (z. B. Telefon-Profil ohne
-Halium-Abbild), steht der Grund in roter Schrift, und **Weiter** ist gesperrt.
+The preview at the bottom shows the **exact sequence** with all commands. You see what will happen before you
+start. If the selection does not make sense (e.g. phone profile without a Halium image), the reason is shown in red
+and **Next** is disabled.
 
-### 3. Prüfung
+### 3. Check
 
-Eine Tabelle mit allen Voraussetzungen:
+A table of all requirements:
 
-| Zeichen | Bedeutung |
+| Mark | Meaning |
 |---|---|
-| ✓ grün | erfüllt |
-| ✗ rot | fehlt, und der Ablauf kann so nicht starten. Beheben und mit **Erneut prüfen** wiederholen |
-| ! gelb | Hinweis. Das Telefon kann später angeschlossen werden (z. B. im Fastboot-Modus) |
+| ✓ green | fulfilled |
+| ✗ red | missing, and the run cannot start like this. Fix it and repeat with **Check again** |
+| ! yellow | note. The phone may be connected later (e.g. in fastboot mode) |
 
-**Weiter** ist erst frei, wenn alle roten Punkte erledigt sind. Die gelben Punkte blockieren
-nicht.
+**Next** is only enabled when all red points are resolved. The yellow points do not block.
 
-### 4. Ablauf
+### 4. Run
 
-- Die Liste der Schritte zeigt den Status jedes Schritts: *wartet*, *läuft*, *fertig*,
-  *übersprungen* (optional fehlgeschlagen), *Fehler* oder *abgebrochen*.
-- Das Protokoll zeigt die Ausgabe der Skripte live.
-- **Starten** beginnt den Ablauf. **Abbrechen** beendet den laufenden Schritt (nach einer
-  Rückfrage).
-- Schließen Sie das Fenster während des Ablaufs, fragt der Installer, ob er abbrechen soll.
+- The list of steps shows the status of each step: *waiting*, *running*, *done*, *skipped* (optional step failed),
+  *error* or *cancelled*.
+- The log shows the output of the scripts live.
+- **Start** begins the run. **Cancel** stops the running step (after a confirmation).
+- If you close the window during a run, the installer asks whether it should cancel.
 
-Destruktive Schritte fragen vor dem Start nach einer Bestätigung: Sie tippen `LOESCHEN`.
+Destructive steps ask for a confirmation before the start: you type `LOESCHEN` (German for "delete").
 
-### 5. Fertig
+### 5. Done
 
-Die Zusammenfassung mit dem Ergebnis, dem Pfad des Protokolls und den nächsten Schritten. Bei
-Neuinstallation steht dort zum Beispiel, dass der schwarze Bildschirm beim ersten Start normal
-ist und wie Sie das Telefon über USB erreichen.
+The summary with the result, the path of the log and the next steps. For a reinstall it says, for example, that the
+black screen at the first boot is normal and how to reach the phone over USB.
 
-## Betriebsarten
+## Operating modes
 
-| Betriebsart | Was passiert | Telefon |
+| Mode | What happens | Phone |
 |---|---|---|
-| **Nur bauen** | Quellen holen, Kernel bauen, Boot-Images bauen, Abbild bauen | bleibt unberührt |
-| **Bauen und neu installieren** | wie „Nur bauen“, dann (optional Nothing OS), Abbild auf `userdata`, Kernel auf Slot b, warten, Zweite Stufe | **wird überschrieben, Daten gelöscht** |
-| **Zweite Stufe am laufenden Telefon** | warten, NAT, `setup-phone.sh` (Halium, libhybris, wlroots, Nothing-Shell) | läuft, Telefon muss per USB erreichbar sein |
-| **Server-Profil am laufenden Telefon** | warten, NAT, `setup-server.sh` | läuft, Telefon muss per USB erreichbar sein |
-| **Desktop-Profil am laufenden Telefon** | warten, NAT, `setup-desktop.sh` | läuft, Telefon muss per USB erreichbar sein |
+| **Build only** | fetch sources, build kernel, build boot images, build the image | left untouched |
+| **Build and reinstall** | as "build only", then (optionally Nothing OS), the image on `userdata`, the kernel on slot b, wait, second stage | **overwritten, data erased** |
+| **Second stage on the running phone** | wait, NAT, `setup-phone.sh` (Halium, libhybris, wlroots, Nothing shell) | running, phone must be reachable over USB |
+| **Server profile on the running phone** | wait, NAT, `setup-server.sh` | running, phone must be reachable over USB |
+| **Desktop profile on the running phone** | wait, NAT, `setup-desktop.sh` | running, phone must be reachable over USB |
 
-Die einzelnen Schritte im Detail, so wie sie der Installer aufruft:
+The individual steps as the installer calls them:
 
-| Schritt | Befehl | Hinweis |
+| Step | Command | Note |
 |---|---|---|
-| Kernel-Quellen holen | `scripts/fetch-sources.sh` | mehrere GB aus dem Internet |
-| Kernel und Module bauen | `scripts/build-kernel.sh all` | |
-| Boot-Images bauen | `scripts/build-debug-boot.sh` | |
-| Arch-Linux-Abbild bauen | `env PROFILE=… scripts/build-rootfs.sh` (mit sudo) | dauert am längsten |
-| Nothing OS schreiben (optional) | `scripts/flash-stock.sh firmware/…/images` | **löscht die Daten** |
-| Abbild auf `userdata` | `fastboot flash userdata out/rootfs.simg` | **löscht die Daten** |
-| Kernel auf Slot b | `scripts/flash-debug-b.sh` | Slot a bleibt unverändert |
-| Warten auf das Telefon | eigene Prüfung über SSH (172.16.42.1:22) | bis zu fünf Minuten |
-| Internet freigeben (optional) | `scripts/host-nat.sh up` (mit sudo) | |
-| Zweite Stufe | `scripts/setup-phone.sh <system.img>` | |
-| Server-Profil | `scripts/setup-server.sh` | Telefon startet neu |
-| Desktop-Profil | `scripts/setup-desktop.sh` | Telefon startet neu |
+| fetch kernel sources | `scripts/fetch-sources.sh` | several GB from the internet |
+| build kernel and modules | `scripts/build-kernel.sh all` | |
+| build boot images | `scripts/build-debug-boot.sh` | |
+| build Arch Linux image | `env PROFILE=… scripts/build-rootfs.sh` (with sudo) | takes longest |
+| write Nothing OS (optional) | `scripts/flash-stock.sh firmware/…/images` | **erases the data** |
+| image to `userdata` | `fastboot flash userdata out/rootfs.simg` | **erases the data** |
+| kernel to slot b | `scripts/flash-debug-b.sh` | slot a stays unchanged |
+| wait for the phone | own check over SSH (172.16.42.1:22) | up to five minutes |
+| share internet (optional) | `scripts/host-nat.sh up` (with sudo) | |
+| second stage | `scripts/setup-phone.sh <system.img>` | |
+| server profile | `scripts/setup-server.sh` | phone reboots |
+| desktop profile | `scripts/setup-desktop.sh` | phone reboots |
 
-Beim **Profil „Server“** endet die Neuinstallation nach dem Schreiben des Slots b. Das
-Server-Abbild braucht keine Zweite Stufe. Beim **Profil „Desktop“** ist die Zweite Stufe
-optional. Sie bringt die GPU-Beschleunigung für GNOME.
+With the **server profile** a reinstall ends after writing slot b. The server image needs no second stage. With the
+**desktop profile** the second stage is optional. It brings GPU acceleration for GNOME.
 
-## Sicherheit
+## Safety
 
-- **Bestätigungen.** Die drei Häkchen auf der ersten Seite, und vor jedem Ablauf mit
-  destruktiven Schritten das Wort `LOESCHEN`.
-- **sudo-Passwort.** Wird vor dem Start abgefragt und mit `sudo -v` geprüft. Es steht nur im
-  Speicher. An die Schritte wird es über die Standardeingabe (stdin) weitergereicht, nie als
-  Befehlszeilen-Argument (das wäre in `ps` sichtbar). Es landet nicht im Protokoll.
-- **Abbrechen.** Jeder Schritt läuft in einer eigenen Prozessgruppe. **Abbrechen** beendet die
-  ganze Gruppe, also auch Unterprozesse wie `make`.
-- **Keine Stille.** Jede Ausgabe steht im Fenster und im Protokoll. Ein fehlgeschlagener
-  Pflichtschritt beendet den Ablauf sofort.
+- **Confirmations.** The three checkboxes on the first page, and before every run with destructive steps the word `LOESCHEN`.
+- **sudo password.** It is asked for before the start and verified with `sudo -v`. It is only kept in memory. It
+  is passed to the steps over standard input (stdin), never as a command-line argument (that would be visible in
+  `ps`). It never appears in the log.
+- **Cancel.** Each step runs in its own process group. **Cancel** stops the whole group, including child processes
+  such as `make`.
+- **Nothing hidden.** Every output appears in the window and in the log. A failed required step stops the run immediately.
 
-## Kommandozeile
+## Command line
 
 ```sh
-python3 installer/tetris_installer.py [Optionen]
+python3 installer/tetris_installer.py [options]
 ```
 
-| Option | Wirkung |
+| Option | Effect |
 |---|---|
-| `--dry-run` | Öffnet das Fenster, führt aber keinen Befehl aus. Das sudo-Passwort wird nicht abgefragt. Gut zum Ausprobieren |
-| `--print-plan` | Gibt den Ablauf als Text aus und beendet sich. Kein Fenster |
-| `--mode {build,full,stage2,server,desktop}` | Betriebsart (mit `--print-plan`) |
-| `--profile {phone,server,desktop}` | Profil (mit `--print-plan`) |
-| `--halium PFAD` | Halium-Abbild (mit `--print-plan`) |
-| `--stock` | Nothing OS vorher schreiben (mit `--print-plan` und `--mode full`) |
+| `--dry-run` | opens the window but runs no command. The sudo password is not asked for. Good for trying it out |
+| `--print-plan` | prints the sequence as text and exits. No window |
+| `--mode {build,full,stage2,server,desktop}` | operating mode (with `--print-plan`) |
+| `--profile {phone,server,desktop}` | profile (with `--print-plan`) |
+| `--halium PATH` | Halium image (with `--print-plan`) |
+| `--stock` | write Nothing OS first (with `--print-plan` and `--mode full`) |
 
-Beispiele:
+Examples:
 
 ```sh
-# Ablauf für eine Neuinstallation mit Halium-Abbild anzeigen
+# show the sequence for a reinstall with the Halium image
 python3 installer/tetris_installer.py --print-plan --mode full --profile phone \
     --halium downloads/halium/system.img --stock
 
-# Fenster ausprobieren, ohne etwas zu verändern
+# try the window without changing anything
 python3 installer/tetris_installer.py --dry-run
 ```
 
-## Protokolle
+## Logs
 
-Jeder Lauf schreibt ein Protokoll nach `out/installer-logs/installer-JJJJMMTT-HHMMSS.log`. Das
-Verzeichnis `out/` liegt nicht im Git. Das Protokoll enthält:
+Each run writes a log to `out/installer-logs/installer-YYYYMMDD-HHMMSS.log`. The directory `out/` is not in Git.
+The log contains:
 
-- den Ablauf als Liste,
-- jeden Befehl, den der Installer startet,
-- die Ausgabe der Skripte,
-- den Rückgabewert jedes Schritts,
-- das Ende (`done`, `fail` oder `cancel`).
+- the sequence as a list,
+- every command the installer starts,
+- the output of the scripts,
+- the return code of each step,
+- the end (`done`, `fail` or `cancel`).
 
-Ein Passwort steht nie im Protokoll. Teilen Sie es trotzdem nur geschwärzt, denn die Ausgabe der
-Skripte kann Seriennummern und Netzadressen enthalten.
+A password never appears in the log. Still, share it only redacted, because the scripts' output can contain
+serial numbers and network addresses.
 
 ## Tests
 
-Die Ablauf-Logik hat eigene Tests. Sie brauchen kein Telefon und kein Fenster:
+The sequence logic has its own tests. They need no phone and no window:
 
 ```sh
 python3 -m unittest discover -s installer -p 'test_*.py' -v
 ```
 
-Die Tests prüfen unter anderem:
+The tests check, among other things:
 
-- die Reihenfolge der Schritte in jeder Betriebsart,
-- dass destruktive Schritte als solche markiert sind,
-- dass `sudo` nur dort gefordert wird, wo es nötig ist,
-- dass das Telefon-Profil ohne Halium-Abbild abgelehnt wird,
-- dass die Prüfung je nach Betriebsart die richtigen Werkzeuge und Dateien verlangt.
+- the order of the steps in each operating mode,
+- that destructive steps are marked as such,
+- that `sudo` is only required where needed,
+- that the phone profile without a Halium image is rejected,
+- that the check demands the right tools and files for each operating mode.
 
-## Fehler und Lösungen
+## Errors and solutions
 
-| Meldung oder Verhalten | Ursache | Lösung |
+| Message or behaviour | Cause | Remedy |
 |---|---|---|
-| `tkinter fehlt. Auf Arch Linux: sudo pacman -S tk` | Tk ist nicht installiert | `sudo pacman -S tk` |
-| `Kein Anzeigeserver gefunden` | Installer ohne Desktop gestartet (z. B. per SSH) | Auf dem Desktop starten, oder `--print-plan` verwenden |
-| Prüfseite: `Programm: … fehlt` | Werkzeug nicht installiert | Paket installieren (siehe [docs, 4.4](../docs/04-bauen-und-flashen.md#44-host-pakete)) |
-| Prüfseite: `Arch-Linux-ARM-Basissystem` fehlt | Eingabedatei fehlt | [docs, 4.3](../docs/04-bauen-und-flashen.md#43-eingaben-selbst-beschaffen) |
-| `Das Passwort stimmt nicht` | falsches sudo-Passwort | Erneut eingeben (dreimal) |
-| Ablauf bleibt bei „warte auf das Telefon“ | Telefon nicht über USB erreichbar, oder Neustart dauert | Kabel prüfen, `ip addr` auf dem PC, Telefon ggf. im Initramfs (Notfall-Shell) |
-| `fastboot … not found` oder kein Gerät | Telefon nicht im Fastboot-Modus | Power und Lautstärke runter halten, dann `fastboot devices` |
-| Schritt „Arch-Linux-Abbild bauen“ bricht ab | Siehe Protokoll, meist ein fehlendes Paket oder QEMU | [docs, 4.12](../docs/04-bauen-und-flashen.md#412-häufige-fehler-beim-bauen) |
-| Ablauf endet mit `fail` | Der Schritt im Protokoll zeigt die Ursache | Protokoll lesen, Ursache beheben, Installer neu starten und mit den gleichen Einstellungen erneut ausführen |
+| `tkinter fehlt. Auf Arch Linux: sudo pacman -S tk` | Tk is not installed | `sudo pacman -S tk` |
+| `Kein Anzeigeserver gefunden` | installer started without a desktop (e.g. over SSH) | start it on the desktop, or use `--print-plan` |
+| check page: `Programm: … fehlt` | tool not installed | install the package (see [docs, 4.4](../docs/04-build-and-flash.md#44-host-packages)) |
+| check page: `Arch-Linux-ARM-Basissystem` missing | input file missing | [docs, 4.3](../docs/04-build-and-flash.md#43-getting-the-inputs-yourself) |
+| `Das Passwort stimmt nicht` | wrong sudo password | enter it again (three attempts) |
+| run stays at "warte auf das Telefon" | phone not reachable over USB, or the reboot takes long | check the cable, `ip addr` on the PC, the phone may be in the initramfs emergency shell |
+| `fastboot … not found` or no device | phone not in fastboot mode | hold Power and Volume down, then `fastboot devices` |
+| step "Build Arch Linux image" aborts | see the log, usually a missing package or QEMU | [docs, 4.12](../docs/04-build-and-flash.md#412-common-build-errors) |
+| run ends with `fail` | the step in the log shows the cause | read the log, fix the cause, restart the installer and run again with the same settings |
 
-Ein fehlgeschlagener Lauf lässt sich bei den gleichen Einstellungen wiederholen. Die Schritte
-sind größtenteils wiederholbar: `fetch-sources.sh` überspringt bereits vorhandene
-Quellen, und `build-kernel.sh` baut neu, was sich geändert hat. Die Flash-Schritte schreiben
-erneut, das schadet nicht.
+A failed run can be repeated with the same settings. Most steps are repeatable: `fetch-sources.sh` skips
+sources that are already there, and `build-kernel.sh` rebuilds what has changed. The flash steps write again,
+which does no harm.
 
-## Aufbau der Dateien
+## Layout of the files
 
-| Datei | Inhalt |
+| File | Content |
 |---|---|
-| `tetris_installer.py` | Oberfläche (Tk), Ausführung im Hintergrund, Telefon-Prüfungen, Einstieg |
-| `steps.py` | Ablaufplan: welche Schritte in welcher Reihenfolge, Voraussetzungen. Ohne Oberfläche |
-| `test_steps.py` | Tests für `steps.py` |
-| `README.md` | diese Anleitung |
+| `tetris_installer.py` | window (Tk), run in the background, phone checks, entry point |
+| `steps.py` | sequence: which steps in which order, requirements. Without a window |
+| `test_steps.py` | tests for `steps.py` |
+| `README.md` | this guide (English) |
+| `de/README.md` | the same guide in German |
 
-Die Trennung ist Absicht. `steps.py` entscheidet, **was** passiert, und ist ohne Fenster prüfbar.
-`tetris_installer.py` zeigt es an und führt es aus. Wenn Sie einen Schritt ändern oder ergänzen,
-passen Sie `steps.py` an und ergänzen Sie einen Test in `test_steps.py`.
+The separation is deliberate. `steps.py` decides **what** happens and can be checked without a window.
+`tetris_installer.py` shows it and runs it. If you change or add a step, adjust `steps.py` and add a test in
+`test_steps.py`.
 
-### Einen Schritt hinzufügen
+### Adding a step
 
-1. In `steps.py` in `build_plan()` an der richtigen Stelle ein `Step(...)` einfügen.
-   `root=True`, wenn der Befehl `sudo` braucht. `destructive=True`, wenn er Daten löscht.
-   `optional=True`, wenn ein Fehlschlag den Ablauf nicht stoppen soll.
-2. Einen Test in `test_steps.py` ergänzen, der die Reihenfolge prüft.
-3. Mit `--print-plan` die Ausgabe ansehen.
-4. Mit `--dry-run` das Fenster durchklicken.
+1. In `steps.py`, in `build_plan()`, insert a `Step(...)` at the right place. `root=True` if the command needs `sudo`.
+   `destructive=True` if it erases data. `optional=True` if a failure should not stop the run.
+2. Add a test in `test_steps.py` that checks the order.
+3. Look at the output with `--print-plan`.
+4. Click through the window with `--dry-run`.
 
-## Stand der Prüfung
+## Status of testing
 
-Der Installer ist mit Python 3.14 und Tk 8.6 entwickelt. Geprüft sind:
+The installer was developed with Python 3.14 and Tk 8.6. Tested are:
 
-- die Ablauf-Logik mit Unit-Tests,
-- der Ablauf als Text (`--print-plan`) in allen Betriebsarten,
-- die Oberfläche im Trockenlauf: alle Seiten, Bestätigungen, Protokoll, Ausführung,
-- der Ausführungspfad mit echten Befehlen: Erfolg, Fehlschlag, optionaler Fehlschlag, Abbrechen,
-- die Größe der Seiten im Fenster.
+- the sequence logic with unit tests,
+- the sequence as text (`--print-plan`) in all operating modes,
+- the window in dry-run mode: all pages, confirmations, log, execution,
+- the execution path with real commands: success, failure, optional failure, cancel,
+- the size of the pages in the window.
 
-**Nicht geprüft:** ein Durchlauf mit einem echten Telefon. Die Schritte rufen Skripte auf, die
-im Projekt bereits verwendet werden. Die Kombination aus Installer und Gerät ist aber noch nicht
-erprobt. Beim ersten echten Lauf bitte das Protokoll aufheben.
+**Not tested:** a complete run with a real phone. The steps call scripts that the project already uses.
+The combination of installer and device has not been tried yet. Please keep the log of the first real run.

@@ -1,5 +1,7 @@
 # 6. Rootfs-Referenz: Dateien und Dienste auf dem Telefon
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../06-rootfs-reference.md)
+
 Das **Rootfs** ist das Dateisystem des Arch-Linux-Systems auf dem Telefon. Dieses Kapitel
 erklärt, was unser Projekt darin ergänzt oder ändert. Die Grundlage ist ein offizielles
 Arch-Linux-ARM-Abbild. Alles, was wir hinzufügen, liegt im Verzeichnis `rootfs/`.

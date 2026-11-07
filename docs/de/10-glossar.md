@@ -1,5 +1,7 @@
 # 10. Glossar
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../10-glossary.md)
+
 Alphabetisch sortiert. Die Erklärungen sind knapp gehalten. Wo es nötig ist, verweisen sie
 auf das Kapitel mit den Details.
 

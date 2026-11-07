@@ -1,5 +1,7 @@
 # 7. Kernel, Treiber und Patches
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../07-kernel-drivers-patches.md)
+
 Dieses Kapitel erklärt, woraus der Kernel des Telefons besteht, welche Änderungen wir
 vornehmen und warum. Es gilt für alle Teile, die fremde Software verändern: den Kernel,
 die Gerätetreiber, libhybris, wlroots und ModemManager.

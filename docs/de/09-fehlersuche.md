@@ -1,5 +1,7 @@
 # 9. Fehlersuche
 
+**🇩🇪 Deutsch** · [🇬🇧 English](../09-troubleshooting.md)
+
 Dieses Kapitel hilft, wenn etwas nicht funktioniert. Es beginnt mit dem Grundsatz, und dann
 folgen die Werkzeuge, die Protokolle, die typischen Fehler und der Weg zurück.
 

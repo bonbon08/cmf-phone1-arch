@@ -1,53 +1,53 @@
-# Technische Dokumentation: Arch Linux auf dem CMF Phone 1
+# Technical documentation: Arch Linux on the CMF Phone 1
 
-Diese Dokumentation erklärt das Projekt **vollständig**: was auf dem Telefon läuft, wie
-es zusammengebaut wird, welches Skript was tut und warum etwas so gelöst wurde. Sie
-richtet sich an zwei Gruppen:
+**🇬🇧 English** · [🇩🇪 Deutsch](de/README.md)
 
-- **Einsteiger ohne technisches Vorwissen.** Sie wollen verstehen, was dieses Projekt
-  macht, und vielleicht später selbst installieren. Lesen Sie in dieser Reihenfolge:
-  `01-grundlagen.md`, `02-geraet-und-partitionen.md`, `08-profile.md`, `10-glossar.md`.
-  Begriffe, die Ihnen unbekannt vorkommen, stehen im Glossar.
-- **Entwickler und Bastler**, die bauen, flashen, Fehler suchen oder Code ändern wollen.
-  Dort stehen die Details: `03-architektur.md`, `04-bauen-und-flashen.md`,
-  `05-skript-referenz.md`, `06-rootfs-referenz.md`, `07-kernel-treiber-patches.md`,
-  `09-fehlersuche.md`.
+This documentation explains the project **completely**: what runs on the phone, how it is
+built, what each script does and why things are solved the way they are. It is written for
+two groups:
 
-Die Kurzfassung für den eiligen Leser steht in der Haupt-[README](../README.md).
+- **Beginners with no technical background.** You want to understand what this project does,
+  and maybe install it yourself later. Read in this order: `01-basics.md`,
+  `02-hardware-and-partitions.md`, `08-profiles.md`, `10-glossary.md`. Terms you do not know
+  are explained in the glossary.
+- **Developers and tinkerers** who want to build, flash, debug or change code. The details are
+  in `03-architecture.md`, `04-build-and-flash.md`, `05-script-reference.md`,
+  `06-rootfs-reference.md`, `07-kernel-drivers-patches.md` and `09-troubleshooting.md`.
 
-## Inhalt
+The short version for people in a hurry is the main [README](../README.md).
 
-| Datei | Inhalt | Für wen |
+## Contents
+
+| File | Content | For whom |
 |---|---|---|
-| [01-grundlagen.md](01-grundlagen.md) | Was Linux, ein Kernel, ein Bootloader, ein Compositor und ein Container sind. Ohne Vorkenntnisse | Alle |
-| [02-geraet-und-partitionen.md](02-geraet-und-partitionen.md) | Das Telefon (Chip, Speicher, Partitionen, A/B-Slots) und was auf welcher Partition liegt | Alle, Pflicht vor dem Flashen |
-| [03-architektur.md](03-architektur.md) | Startkette vom Einschalten bis zum Desktop, Halium-Container, GPU-Pfad, Modem-Pfad | Entwickler |
-| [04-bauen-und-flashen.md](04-bauen-und-flashen.md) | Schritt-für-Schritt: Eingaben beschaffen, bauen, flashen, zweite Stufe, Rückweg | Anwender, Bastler |
-| [05-skript-referenz.md](05-skript-referenz.md) | Jedes Skript in `scripts/`, `pkgbuilds/` und `initramfs/`: Zweck, Argumente, Ein- und Ausgaben | Entwickler |
-| [06-rootfs-referenz.md](06-rootfs-referenz.md) | Das Dateisystem des Telefons: Overlays, Systemd-Dienste, eigene Programme, Konfigurationen | Entwickler |
-| [07-kernel-treiber-patches.md](07-kernel-treiber-patches.md) | Kernel-Konfiguration, Patches für Kernel, Treiber, libhybris, wlroots, ModemManager | Entwickler |
-| [08-profile.md](08-profile.md) | Die vier Betriebsarten: Phone (Nothing-Shell oder Phosh), Server, Desktop und die Einmal-Umschaltung | Alle |
-| [09-fehlersuche.md](09-fehlersuche.md) | Logs finden, typische Fehler und ihre Ursachen, Crash-Schutz, Rückweg bei Problemen | Alle |
-| [10-glossar.md](10-glossar.md) | Erklärung aller Fachbegriffe und Abkürzungen | Alle |
+| [01-basics.md](01-basics.md) | What Linux, a kernel, a bootloader, a compositor and a container are. No prior knowledge needed | Everyone |
+| [02-hardware-and-partitions.md](02-hardware-and-partitions.md) | The phone (chip, memory, partitions, A/B slots) and what lives on which partition | Everyone, required before flashing |
+| [03-architecture.md](03-architecture.md) | Boot chain from power-on to desktop, Halium container, GPU path, modem path | Developers |
+| [04-build-and-flash.md](04-build-and-flash.md) | Step by step: getting the inputs, building, flashing, second stage, way back | Users, tinkerers |
+| [05-script-reference.md](05-script-reference.md) | Every script in `scripts/`, `pkgbuilds/` and `initramfs/`: purpose, arguments, inputs and outputs | Developers |
+| [06-rootfs-reference.md](06-rootfs-reference.md) | The phone's file system: overlays, systemd services, own programs, configuration | Developers |
+| [07-kernel-drivers-patches.md](07-kernel-drivers-patches.md) | Kernel configuration, patches for the kernel, drivers, libhybris, wlroots, ModemManager | Developers |
+| [08-profiles.md](08-profiles.md) | The operating modes: phone (Nothing shell or Phosh), server, desktop and one-boot switching | Everyone |
+| [09-troubleshooting.md](09-troubleshooting.md) | Finding logs, typical errors and their causes, crash guard, way back when things go wrong | Everyone |
+| [10-glossary.md](10-glossary.md) | Explanation of all technical terms and abbreviations | Everyone |
 
-## Konventionen in dieser Dokumentation
+## Conventions in this documentation
 
-- **Pfade** sind relativ zum Repository-Wurzelverzeichnis (`cmfphone1archLinux/`), wenn
-  nichts anderes steht. Beispiel: `scripts/build-kernel.sh` meint
-  `<Repo>/scripts/build-kernel.sh`.
-- **Befehle** stehen in Code-Blöcken. Wo sie laufen, steht in der Überschrift oder im Text davor:
-  auf dem **PC** oder auf dem **Telefon** (über `scripts/phone-ssh.sh` oder direkt als `alarm`).
-- **`out/`, `src/`, `downloads/`, `firmware/`, `toolchain/`** sind lokale Verzeichnisse.
-  Sie liegen nicht im Git (siehe `.gitignore`), weil sie proprietäre Dateien, Build-Ergebnisse
-  oder sehr große Quellen enthalten. Was sie enthalten sollen, steht in
-  [04-bauen-und-flashen.md](04-bauen-und-flashen.md#43-eingaben-selbst-beschaffen).
-- **Telefon-Namen:** Der Code-Name des Geräts ist `Tetris`, der Chip ist ein MediaTek
-  Dimensity 7300 (`MT6878`). Im Quelltext erscheinen beide Namen, `tetris-*` ist das
-  Präfix für unsere eigenen Programme und Dienste.
-- **Status-Angaben** (funktioniert, teilweise, nicht) stammen aus der Tabelle in der
-  Haupt-README und gelten für den Branch `main`.
+- **Paths** are relative to the repository root (`cmfphone1archLinux/`) unless stated otherwise.
+  For example `scripts/build-kernel.sh` means `<repo>/scripts/build-kernel.sh`.
+- **Commands** are in code blocks. The text before or above them says where they run: on the
+  **PC** or on the **phone** (via `scripts/phone-ssh.sh` or directly as `alarm`).
+- **`out/`, `src/`, `downloads/`, `firmware/`, `toolchain/`** are local directories. They are not
+  in Git (see `.gitignore`) because they hold proprietary files, build results or very large
+  sources. What they should contain is described in
+  [04-build-and-flash.md](04-build-and-flash.md#43-getting-the-inputs-yourself).
+- **Device names:** the code name of the device is `Tetris`, the chip is a MediaTek
+  Dimensity 7300 (`MT6878`). Both names appear in the source. `tetris-*` is the prefix for our own
+  programs and services.
+- **Status statements** (works, partly, not working) come from the table in the main README and
+  apply to the `main` branch.
 
-## Stand
+## Status
 
-Diese Dokumentation beschreibt den Stand von `main` (November 2026). Wenn sich Skripte ändern, sollten die betroffenen Abschnitte
-im selben Commit angepasst werden.
+This documentation describes the state of `main` (November 2026). When scripts change, the
+affected sections should be updated in the same commit.
