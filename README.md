@@ -27,7 +27,7 @@ used through [libhybris](https://github.com/libhybris/libhybris).
 | Bluetooth | ✅ | |
 | Battery / charging | ✅ | |
 | Audio (speaker, mic) | ✅ | UCM config. The phone has no 3.5 mm jack; analog headsets via a passive USB-C adapter should be detected (codec "Headset Jack"), untested |
-| Vibration | ✅ | feedbackd through a force-feedback bridge (`tetris-vibra`) |
+| Vibration | ✅ | RT6010 haptic driver, a mainline-style port in `mainline/`. It claims the chip at boot and exposes the motor as a force-feedback input device, which feedbackd uses directly. The old `tetris-vibra` bridge only runs if the port is not built |
 | Torch | ✅ | Phosh quick setting (`tetris-torch`, flash LED via uleds) |
 | Screenshots | ✅ | Hold both volume keys (`tetris-screenshot`, saved to `~/Pictures/Screenshots`) |
 | Cameras | ✅ | Main (50 MP), front, and the rear IR depth sensor; own app **Kamera** with an IR false-colour mode |
@@ -303,6 +303,49 @@ sensor spot is drawn above the lock screen). The screen goes off after 60 s with
 in GPU mode (`tetris-nothing-session`), else PyGObject apps such as the settings app abort
 with "static TLS block". Rotation needs `WLR_OUTPUT_STATE_TRANSFORM` in our wlroots
 hwcomposer backend (patches/wlroots/0002).
+
+## Roadmap: open items and the move to Linux 7.x
+
+Goal: the phone should run a mainline 7.x kernel instead of Nothing's 6.1 kernel. The table tracks what
+is still tied to the Nothing kernel. "Blocker" says what has to change first. Status values: **done**,
+**in progress**, **open**, **blocked** (needs a proprietary blob or a driver nobody has written yet).
+
+### Open features
+
+| Item | Status | What is missing |
+|---|---|---|
+| Calls | open | Incoming calls: MediaTek's MIPC channel approves calls (`rootfs/src/tetris-mipc`, not built). Call audio: the audio HAL switches the speech path on (`rootfs/src/tetris-voicecall`, work in progress) |
+| Standby (suspend) | open | The SoC hangs in deep sleep. Suspend is disabled (`sleep.conf.d/50-tetris-nosuspend.conf`) |
+| GPS first fix | open | Satellites are found; a fix is not confirmed. Needs a test outdoors and a check of `tetris-gnss` |
+| Headset jack | open | Analog headsets via a USB-C adapter, untested |
+| Battery gauge oops | open | `mt6375_battery` can NULL-dereference in `__wake_up_common` from `coulomb_irq` and reset the phone. Root cause not found; the probe path is correct. A pstore log of this is kept in `out/` |
+| Vibration on mainline | in progress | The port builds for 7.3 and runs on 6.1. Mainline-only check still open |
+
+### What a mainline 7.x kernel needs
+
+| Component | Today (Nothing 6.1 tree) | For 7.x | Blocker / next step | Status |
+|---|---|---|---|---|
+| Kernel config | `kernel/linux.config` on top of Nothing's defconfig | a mainline defconfig plus our fragment | list the options we need, check which exist upstream | open |
+| SO_PEERPIDFD | backported (`patches/kernel/0001`) | upstream since 6.5 | drop the patch | done on paper, check on 7.x |
+| Haptics (RT6010) | vendor `haptic` driver, ~4400 lines | port in `mainline/drivers/input/misc/rt6010-haptic.c` | mainline 7.3 builds; runs on 6.1 | in progress |
+| Battery / charger | vendor `mt6375` gauge and charger, patched (`patches/kernel_device_modules/0001`) | check whether 7.x has MT6375 support | the gauge crash above | open |
+| Display panels | vendor `s6e8fc3x02` and others, HBM patch `0003` | upstream DRM panel drivers, plus the HBM notification | the notification to the fingerprint driver is ours | open |
+| Touch | vendor `focaltech` ft3519 with resume patch `0004` | check for an upstream focaltech driver | the resume fix has to be carried over | open |
+| Sensors | SCP sensor hub `/dev/hf_manager` (vendor) | an upstream sensor-hub driver, or keep the vendor one | `tetris-sensors` talks to `/dev/hf_manager` | blocked |
+| Audio codec | MT6369 plus aw882xx, UCM profile | ALSA codec drivers for MT6369 and aw882xx | patch `0002` (mixer switch read) | open |
+| GPU (Mali-G615) | vendor Mali kernel module, used through libhybris | a mainline DRM driver for this GPU | check whether a mainline driver supports the G615. Until then the Halium container and libhybris stay | blocked |
+| Display path | vendor composer HAL over DRM, wlroots hwcomposer backend | mainline DRM and KMS on the MediaTek display | depends on the GPU row above | blocked |
+| Modem (CCCI) | vendor `ccci` kernel modules, `ccci_mdinit` in the container | a mainline modem driver | proprietary protocol and firmware; `tetris_mdtty` is ours | blocked |
+| Wi-Fi and Bluetooth (connac2, conninfra) | vendor `connectivity/*` modules, `/dev/wmtWifi`, `/dev/stpbt` | mainline support for this combo chip | out-of-tree vendor code; the NVRAM handoff in `initramfs/init` is specific to it | blocked |
+| GNSS | vendor `gps` modules, Android `mnld` | mainline GNSS support | blob-based | blocked |
+| Fingerprint | Goodix HAL with TEE (Trustonic) | mainline driver | TEE dependency | blocked |
+| Camera | vendor `mtkcam` and camera HAL | mainline MediaTek ISP support | large, proprietary 3A algorithms | blocked |
+| Device tree | `k6878v1_64_tetris.dts` (vendor) | a mainline DTS for Tetris | copy the hardware description, drop vendor properties | open |
+| Boot and partitions | vendor `boot`, `vendor_boot`, LK, A/B slots | the same boot chain on 7.x | the initramfs and NVRAM steps stay | open |
+
+**Bottom line:** a mainline 7.x kernel can boot the phone only when the blocked rows are solved or still
+handled by the Halium container. Today the modem, Wi-Fi, Bluetooth, camera, GNSS and GPU depend on vendor
+kernel code. The container and the vendor modules are therefore still part of the plan.
 
 ## Risks
 
