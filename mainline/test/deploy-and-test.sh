@@ -42,16 +42,22 @@ if [[ ${1:-} == --flash ]]; then
     wait_for_phone
 fi
 
-echo "== checking the chip owner"
-owner=$("$SSH" "readlink /sys/bus/i2c/devices/0-005f/driver | xargs -r basename" 2>/dev/null || true)
-if [[ $owner != rt6010-haptic ]]; then
-    echo "chip 0-005f is owned by '${owner:-nothing}', not rt6010-haptic" >&2
-    echo "(build with mainline/test/build-for-phone.sh, then scripts/build-debug-boot.sh and flash with --flash)" >&2
-    exit 1
-fi
-echo "owner: rt6010-haptic"
+echo "== checking the chip owners"
+check_owner() { # check_owner <i2c device> <expected driver>
+    local owner
+    owner=$("$SSH" "readlink /sys/bus/i2c/devices/$1/driver | xargs -r basename" 2>/dev/null || true)
+    if [[ $owner != "$2" ]]; then
+        echo "$1 is owned by '${owner:-nothing}', not $2" >&2
+        return 1
+    fi
+    echo "$1 owner: $2"
+}
+check_owner 0-005f rt6010-haptic
+check_owner 2-0038 focaltech-ft3519
 
-scp_ "$T/haptic-ff-test.py" "alarm@172.16.42.1:/tmp/"
+scp_ "$T/haptic-ff-test.py" "$T/touch-test.py" "alarm@172.16.42.1:/tmp/"
 echo "== vibrating"
 "$SSH" "echo '$PASS' | sudo -S -p '' python3 /tmp/haptic-ff-test.py 3 300"
+echo "== touch: tap the screen now (15 s)"
+"$SSH" "echo '$PASS' | sudo -S -p '' python3 /tmp/touch-test.py 15" || true
 echo "Done."
