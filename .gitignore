@@ -27,3 +27,5 @@ modules.order
 .tmp_versions/
 rootfs/src/tetris-camera-app/kamera
 rootfs/src/tetris-camera-app/tetris-cam2probe
+__pycache__/
+*.pyc
