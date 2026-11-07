@@ -10,6 +10,9 @@ used through [libhybris](https://github.com/libhybris/libhybris).
 > the phone's data. Standby does not work yet, so battery life is short. Read
 > [Risks](#risks) before you start.
 
+> **Dokumentation:** Eine ausführliche technische Beschreibung für Einsteiger und Entwickler
+> steht in [docs/](docs/README.md): Grundlagen, Architektur, jedes Skript, Fehlersuche und Glossar.
+
 ## What works
 
 | Area | Status | Notes |
