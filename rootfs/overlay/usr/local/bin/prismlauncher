@@ -1,0 +1,13 @@
+#!/bin/sh
+# Prism Launcher with a clean graphics environment, so Minecraft (26.x renders through
+# SDL3 with an OpenGL or Vulkan backend) can start:
+# - The session's LD_LIBRARY_PATH swaps libEGL for libhybris' GLES-only one, LWJGL then
+#   finds no desktop OpenGL ("Could not retrieve OpenGL functions"). Without it Mesa's
+#   llvmpipe gives OpenGL 4.6 in software. Same for the desktop profile's glvnd vendor list.
+# - The Mali Vulkan lacks VK_KHR_push_descriptor and VK_EXT_vertex_attribute_divisor,
+#   which Minecraft's Vulkan backend requires; Zink on it fails to create a screen.
+# - SDL falls back to XWayland because the compositor has no fifo-v1; native Wayland
+#   works and saves the detour.
+unset LD_LIBRARY_PATH HYBRIS_LD_LIBRARY_PATH LD_PRELOAD __EGL_VENDOR_LIBRARY_FILENAMES
+export SDL_VIDEO_DRIVER=wayland
+exec /usr/bin/prismlauncher "$@"
