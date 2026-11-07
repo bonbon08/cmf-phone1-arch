@@ -271,6 +271,11 @@ GPU and finally the backlight in three steps from 70/80/90 °C SoC, 42/46/50 °C
 (`journalctl -u tetris-thermal`). **Firefox** gets `/usr/lib/firefox/defaults/pref/tetris-phone.js`:
 without hardware video decoding it no longer probes the ~170 `/dev/video*` nodes at every
 start (15 s → 2 s).
+**Minecraft** (Prism Launcher, e.g. the demo): `/usr/local/bin/prismlauncher` starts Prism
+without the libhybris libraries and with SDL on native Wayland, so the game renders with
+Mesa's llvmpipe (OpenGL 4.6, software). The Mali GPU can't do it: its EGL is GLES-only, its
+Vulkan lacks `VK_KHR_push_descriptor`/`VK_EXT_vertex_attribute_divisor` that Minecraft's
+Vulkan backend needs, and Zink on it fails to create a screen.
 The fingerprint unlock works with the Nothing lock screen (LockedHint, logind Unlock; the
 sensor spot is drawn above the lock screen). The screen goes off after 60 s without touch
 (Einstellungen → Telefon). Apps get `GLIBC_TUNABLES=glibc.rtld.optional_static_tls=16384`
