@@ -258,7 +258,17 @@ Back to Phosh: `sudo rm /etc/tetris-shell && sudo reboot`. Phosh stays installed
 | Volume keys | Volume with an on-screen display, also locked and with the screen off |
 | Turning the phone | The screen turns with it (sensor: `tetris-sensors`); locked it stays upright |
 
-The on-screen keyboard is squeekboard (input-method protocol), it shows up for text fields.
+The on-screen keyboard is squeekboard (input-method protocol), it shows up for text fields;
+the keyboard button at the right of the home bar closes it until the next tap into a field.
+The home screen wallpaper is set in Einstellungen → Darstellung (own photos first).
+
+**Thermal guard** (`tetris-thermal.service`): without Android's thermal HAL the kernel only
+acts at 119 °C and the CPUs have no cooling device. The service caps the CPU clusters, the
+GPU and finally the backlight in three steps from 70/80/90 °C SoC, 42/46/50 °C board NTC or
+45/50/55 °C battery, and powers off at 100 °C SoC, 58 °C board or 60 °C battery
+(`journalctl -u tetris-thermal`). **Firefox** gets `/usr/lib/firefox/defaults/pref/tetris-phone.js`:
+without hardware video decoding it no longer probes the ~170 `/dev/video*` nodes at every
+start (15 s → 2 s).
 The fingerprint unlock works with the Nothing lock screen (LockedHint, logind Unlock; the
 sensor spot is drawn above the lock screen). The screen goes off after 60 s without touch
 (Einstellungen → Telefon). Apps get `GLIBC_TUNABLES=glibc.rtld.optional_static_tls=16384`
