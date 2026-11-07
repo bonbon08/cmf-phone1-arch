@@ -237,8 +237,8 @@ three times at boot; `tetris-display-off` holds the panel, so nothing shows.
 
 ## Nothing shell (default)
 
-The phone runs the Nothing desktop ([Nothing_Wayland](https://github.com/bonbon08/Nothing_Wayland),
-branch `telefon-layout`) in its phone layout: status bar on top, app grid with search as home
+The phone runs the Nothing desktop ([Nothing_Wayland](https://github.com/bonbon08/Nothing_Wayland))
+in its phone layout: status bar on top, app grid with search as home
 screen, home bar at the bottom. It uses the same stack as Phosh (nothing-wm in place of phoc,
 the same GPU or software choice and crash guard). `scripts/setup-phone.sh` builds and switches
 to it at the end (`PHOSH=1` keeps Phosh); on an installed phone:
@@ -260,7 +260,9 @@ Back to Phosh: `sudo rm /etc/tetris-shell && sudo reboot`. Phosh stays installed
 
 The on-screen keyboard is squeekboard (input-method protocol), it shows up for text fields;
 the keyboard button at the right of the home bar closes it until the next tap into a field.
-The home screen wallpaper is set in Einstellungen → Darstellung (own photos first).
+The home screen wallpaper is set in Einstellungen → Darstellung (own photos first). The
+settings app also covers WLAN, LAN, Bluetooth (pairing included) and Mobilfunk (SIM PIN,
+mobile data, APN, roaming).
 
 **Thermal guard** (`tetris-thermal.service`): without Android's thermal HAL the kernel only
 acts at 119 °C and the CPUs have no cooling device. The service caps the CPU clusters, the

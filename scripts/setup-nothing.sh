@@ -11,12 +11,12 @@
 #
 #   setup-nothing.sh [/path/to/Nothing_Wayland]
 #     default: ~/Nothing_Wayland if it exists, else a fresh clone of $NOTHING_REPO
-#     ($NOTHING_REF, the phone layout branch) in out/Nothing_Wayland
+#     ($NOTHING_REF) in out/Nothing_Wayland
 #   SUDO_PASS=...  if alarm's password is no longer "alarm"
 set -euo pipefail
 P=$(realpath "$(dirname "$0")/..")
 NOTHING_REPO=${NOTHING_REPO:-https://github.com/bonbon08/Nothing_Wayland.git}
-NOTHING_REF=${NOTHING_REF:-telefon-layout}
+NOTHING_REF=${NOTHING_REF:-main}
 SRC=${1:-}
 if [ -z "$SRC" ]; then
     if [ -f "$HOME/Nothing_Wayland/PKGBUILD" ]; then
