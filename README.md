@@ -65,6 +65,23 @@ used through [libhybris](https://github.com/libhybris/libhybris).
 You need an x86_64 Linux PC (developed on Arch Linux) and the phone with an
 **unlocked bootloader**.
 
+### Graphical installer (recommended)
+
+`installer/tetris_installer.py` runs the scripts below in the right order and shows
+progress and the log in a small window. It checks the tools and input files first,
+asks for confirmation before anything that deletes data (type `LOESCHEN`) and keeps the
+sudo password in memory only.
+
+```sh
+sudo pacman -S tk                          # Tkinter, once
+python3 installer/tetris_installer.py      # from anywhere in the repository
+```
+
+Options: `--dry-run` (window, runs nothing), `--print-plan --mode full --profile phone
+--halium <system.img>` (prints the steps). Details: [installer/README.md](installer/README.md).
+
+The steps by hand are below.
+
 ### Inputs you have to get yourself
 
 These are not in the repository: they are proprietary, or too large to include.

@@ -45,10 +45,9 @@ Die Kurzfassung für den eiligen Leser steht in der Haupt-[README](../README.md)
   Dimensity 7300 (`MT6878`). Im Quelltext erscheinen beide Namen, `tetris-*` ist das
   Präfix für unsere eigenen Programme und Dienste.
 - **Status-Angaben** (funktioniert, teilweise, nicht) stammen aus der Tabelle in der
-  Haupt-README und gelten für den Branch, auf dem diese Dokumentation liegt.
+  Haupt-README und gelten für den Branch `main`.
 
 ## Stand
 
-Diese Dokumentation beschreibt den Stand des Branches `nothing-shell` (Commit
-`4b11a1c`, November 2026). Wenn sich Skripte ändern, sollten die betroffenen Abschnitte
+Diese Dokumentation beschreibt den Stand von `main` (November 2026). Wenn sich Skripte ändern, sollten die betroffenen Abschnitte
 im selben Commit angepasst werden.
