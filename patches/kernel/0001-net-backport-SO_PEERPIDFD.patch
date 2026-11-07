@@ -1,4 +1,4 @@
-From: bonbon08 <mail@jan-schmitt.eu>
+From: CMF Phone 1 port <cmf-phone1-port@localhost>
 Subject: [PATCH] net: backport SO_PEERPIDFD (Linux 6.5, 7b26952a91cf)
 
 dbus-broker hands out peer pidfds only with SO_PEERPIDFD. Without it GNOME 49+
