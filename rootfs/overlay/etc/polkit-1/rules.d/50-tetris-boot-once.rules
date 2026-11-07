@@ -1,7 +1,8 @@
-// "Als Server/Desktop starten" (tetris-boot-as) reboot once into that profile.
+// App "Startmodus" (tetris-modes): reboot once into the server or desktop profile
+// (tetris-boot-once@), pick the phone's shell (tetris-shell@).
 polkit.addRule(function(action, subject) {
     if (action.id == "org.freedesktop.systemd1.manage-units" &&
-        /^tetris-boot-once@(server|desktop)\.service$/.test(action.lookup("unit")) &&
+        /^tetris-(boot-once@(server|desktop)|shell@(nothing|phosh))\.service$/.test(action.lookup("unit")) &&
         action.lookup("verb") == "start" &&
         subject.local && subject.active) {
         return polkit.Result.YES;

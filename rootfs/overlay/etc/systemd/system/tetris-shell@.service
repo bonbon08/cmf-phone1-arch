@@ -1,0 +1,6 @@
+[Unit]
+Description=Phone shell from the next boot on: %i (nothing or phosh; app "Startmodus")
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'case "%i" in nothing) echo nothing > /etc/tetris-shell ;; phosh) rm -f /etc/tetris-shell ;; *) exit 1 ;; esac; sync'

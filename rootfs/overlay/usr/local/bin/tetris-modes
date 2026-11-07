@@ -1,0 +1,162 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+# "Startmodus": reboot once as server or desktop (tetris-boot-once@, back to the phone on the
+# boot after), and pick the phone's shell (Nothing shell or Phosh, tetris-shell@). Works in
+# both shells; replaces the Phosh-only launchers "Als Server/Desktop starten".
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+SHELLS = [("nothing", "Nothing-Shell", "Startbildschirm mit App-Raster, Home-Leiste, Gesten"),
+          ("phosh", "Phosh", "Die GNOME-Mobil-Oberfläche")]
+
+
+def current_shell():
+    try:
+        with open("/etc/tetris-shell") as f:
+            return "nothing" if f.read().strip() == "nothing" else "phosh"
+    except OSError:
+        return "phosh"
+
+
+def missing(mode):
+    """What still has to be installed for a profile (a script to run on the PC), or None."""
+    if not (os.access("/usr/bin/docker", os.X_OK) and os.access("/usr/local/bin/tetris-display-off", os.X_OK)):
+        return "scripts/setup-server.sh"
+    if mode == "desktop" and not (os.access("/usr/bin/gdm", os.X_OK) and
+                                  os.access("/usr/local/bin/tetris-rdp-setup", os.X_OK) and
+                                  os.path.exists("/opt/libhybris-glvnd/lib/libEGL_libhybris.so.0")):
+        return "scripts/setup-desktop.sh"
+    return None
+
+
+def addr(dev):
+    out = subprocess.run(["ip", "-4", "-o", "addr", "show", dev], capture_output=True, text=True).stdout
+    return out.split()[3].split("/")[0] if out.split() else None
+
+
+def start_unit(unit, done, block=True):
+    """Start a system unit; the polkit rules let the active session do it without a password."""
+    def finish(proc, res):
+        try:
+            ok = proc.wait_check_finish(res)
+        except GLib.Error:
+            ok = False
+        done(ok)
+    p = Gio.Subprocess.new(["systemctl", "start"] + ([] if block else ["--no-block"]) + [unit],
+                           Gio.SubprocessFlags.STDERR_SILENCE)
+    p.wait_check_async(None, finish)
+
+
+class Window(Adw.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Startmodus", default_width=420, default_height=640)
+        self.toasts = Adw.ToastOverlay()
+        tv = Adw.ToolbarView()
+        tv.add_top_bar(Adw.HeaderBar())
+        page = Adw.PreferencesPage()
+        tv.set_content(page)
+        self.toasts.set_child(tv)
+        self.set_content(self.toasts)
+
+        g = Adw.PreferencesGroup(
+            title="Einmal neu starten als",
+            description="Nur für den nächsten Start, danach ist das Handy wieder ein Telefon. "
+                        "Das Display bleibt dabei aus; zurück mit der Ein-/Aus-Taste.")
+        for mode, title, sub, icon in (
+                ("server", "Server", "Docker, KI-Modelle, SSH über WLAN oder USB", "network-server-symbolic"),
+                ("desktop", "Desktop", "GNOME-Desktop über Remote Desktop (RDP)", "computer-symbolic")):
+            row = Adw.ActionRow(title=title, subtitle=sub)
+            row.add_prefix(Gtk.Image(icon_name=icon))
+            need = missing(mode)
+            btn = Gtk.Button(label="Neu starten", valign=Gtk.Align.CENTER)
+            btn.add_css_class("suggested-action")
+            if need:
+                row.set_subtitle(f"Nicht eingerichtet (auf dem PC: {need})")
+                btn.set_sensitive(False)
+            btn.connect("clicked", lambda _b, m=mode, t=title: self.confirm_boot(m, t))
+            row.add_suffix(btn)
+            g.add(row)
+        page.add(g)
+
+        g = Adw.PreferencesGroup(title="Oberfläche des Telefons",
+                                 description="Gilt ab dem nächsten Start.")
+        self.shell = current_shell()
+        group = None
+        for key, title, sub in SHELLS:
+            row = Adw.ActionRow(title=title, subtitle=sub, activatable=True)
+            check = Gtk.CheckButton(active=key == self.shell, valign=Gtk.Align.CENTER)
+            if group:
+                check.set_group(group)
+            group = group or check
+            check.connect("toggled", lambda c, k=key: c.get_active() and self.pick_shell(k))
+            row.add_prefix(check)
+            row.set_activatable_widget(check)
+            g.add(row)
+        page.add(g)
+
+    def confirm_boot(self, mode, title):
+        wlan, usb = addr("wlan0"), addr("usb0")
+        host = wlan or usb or "172.16.42.1"
+        body = (f"Das Handy startet einmal als {title} neu.\n\n"
+                f"WLAN: {wlan or 'nicht verbunden'}\nUSB-Kabel: {usb or '172.16.42.1'}\n"
+                f"SSH: ssh alarm@{host}")
+        if mode == "desktop":
+            try:
+                with open(os.path.expanduser("~/.config/tetris-rdp-password")) as f:
+                    pw = f.read().split()[-1]
+            except (OSError, IndexError):
+                pw = "wird beim Start erzeugt (~/.config/tetris-rdp-password)"
+            body += f"\nRDP: {host}:3389, Benutzer alarm, Passwort {pw}"
+        body += "\n\nZurück zum Telefon: Ein-/Aus-Taste kurz drücken."
+        dlg = Adw.AlertDialog(heading="Neu starten?", body=body)
+        dlg.add_response("cancel", "Abbrechen")
+        dlg.add_response("ok", "Neu starten")
+        dlg.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
+
+        def resp(_d, r):
+            if r == "ok":
+                start_unit(f"tetris-boot-once@{mode}.service",
+                           lambda ok: ok or self.toast("Neustart nicht erlaubt"), block=False)
+        dlg.connect("response", resp)
+        dlg.present(self)
+
+    def pick_shell(self, key):
+        if key == self.shell:
+            return
+
+        def done(ok):
+            if not ok:
+                self.toast("Konnte die Oberfläche nicht umstellen")
+                return
+            self.shell = key
+            dlg = Adw.AlertDialog(heading="Jetzt neu starten?",
+                                  body=f"{dict((k, t) for k, t, _s in SHELLS)[key]} startet beim "
+                                       "nächsten Neustart.")
+            dlg.add_response("later", "Später")
+            dlg.add_response("now", "Neu starten")
+            dlg.set_response_appearance("now", Adw.ResponseAppearance.SUGGESTED)
+            dlg.connect("response", lambda _d, r: r == "now" and subprocess.Popen(["systemctl", "reboot"]))
+            dlg.present(self)
+        start_unit(f"tetris-shell@{key}.service", done)
+
+    def toast(self, text):
+        self.toasts.add_toast(Adw.Toast(title=text))
+
+
+class App(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id="eu.tetris.Modes")
+
+    def do_activate(self):
+        (self.get_active_window() or Window(self)).present()
+
+
+if __name__ == "__main__":
+    sys.exit(App().run(sys.argv))

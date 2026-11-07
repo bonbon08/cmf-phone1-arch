@@ -114,9 +114,9 @@ The user is `alarm` with password `alarm`. **Change it** (`passwd`), because SSH
 Besides the phone (Phosh) the phone can boot as a **server** (headless: Docker, local
 AI models, SSH) or as a **desktop** (GNOME over RDP, on the GPU). Two ways to switch:
 
-- **One boot only:** the Phosh apps **Als Server starten** / **Als Desktop starten**
-  (`tetris-boot-as`) show where the phone will be reachable (SSH, RDP with password) and
-  reboot into that profile. The boot after that is the phone again: a short press on the
+- **One boot only:** the app **Startmodus** (`tetris-modes`, in the Nothing shell and in
+  Phosh) shows where the phone will be reachable (SSH, RDP with password) and reboots into
+  that profile; it also picks the phone's shell (Nothing shell or Phosh, `tetris-shell@`). The boot after that is the phone again: a short press on the
   power key reboots back. Under the hood `/var/lib/tetris-mode/once` is read by a systemd
   generator (`system-generators/tetris-mode-once`) that sets up the profile under `/run`
   only (runtime masks of the phone services, default target, WLAN power save off, power
