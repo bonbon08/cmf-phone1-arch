@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Startmodus
+Comment=Einmal als Server oder Desktop starten, Oberfläche des Telefons wählen
+Exec=tetris-modes
+Icon=system-reboot
+Categories=System;Settings;
+X-Purism-FormFactor=Workstation;Mobile;

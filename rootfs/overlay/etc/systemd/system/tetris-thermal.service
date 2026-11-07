@@ -1,0 +1,11 @@
+[Unit]
+Description=Thermal guard: throttle CPU/GPU and power off before the phone gets too hot
+After=sysinit.target
+
+[Service]
+ExecStart=/usr/local/bin/tetris-thermal
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

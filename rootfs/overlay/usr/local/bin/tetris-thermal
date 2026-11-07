@@ -1,0 +1,97 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Thermal guard (tetris-thermal.service). On Android the thermal HAL throttles the MT6878 from
+# about 50 C on; without it the kernel only acts at its 119 C trip points, and the CPUs have
+# no cooling device at all. This loop takes over: every 2 s it reads the SoC (soc_max), the
+# board NTC (closest to the case temperature) and the battery, picks a level and caps the
+# CPU clusters, the Mali GPU (devfreq cooling device) and, at the top level, the backlight.
+#
+#   level  SoC    board  battery   big / little max   GPU cooling  backlight cap
+#   0      <70    <42    <45       2.5 / 2.0 GHz      0            -
+#   1      70     42     45        2.0 / 2.0 GHz      15/46        -
+#   2      80     46     50        1.5 / 1.6 GHz      30/46        -
+#   3      90     50     55        1.0 / 1.2 GHz      46/46        30/100
+#   off    100    58     60        powers the phone off
+# A level only drops again once every sensor is 4 C below its threshold.
+#   TETRIS_THERMAL_DEBUG=1 logs every reading. TETRIS_THERMAL_NO_POWEROFF=1 only logs "off".
+Z=/sys/class/thermal
+CPU=/sys/devices/system/cpu/cpufreq
+level=-1
+
+zone() {   # temperature (m°C) of the thermal zone with this type
+    for z in $Z/thermal_zone*; do
+        [ "$(cat "$z/type" 2>/dev/null)" = "$1" ] && { echo "$z/temp"; return; }
+    done
+}
+cooler() {
+    for c in $Z/cooling_device*; do
+        [ "$(cat "$c/type" 2>/dev/null)" = "$1" ] && { echo "$c/cur_state"; return; }
+    done
+}
+# TETRIS_THERMAL_SOC/_BOARD/_BAT: other files to read (tests with made-up temperatures)
+SOC=${TETRIS_THERMAL_SOC:-$(zone soc_max)}; BOARD=${TETRIS_THERMAL_BOARD:-$(zone board_ntc)}
+BAT=${TETRIS_THERMAL_BAT:-/sys/class/power_supply/battery/temp}
+GPU=$(cooler devfreq-13000000.mali); BL=$(cooler lcd-backlight)
+
+# level for a reading given the thresholds of levels 1, 2, 3 and "off"
+lvl() {
+    v=$1; shift; l=0
+    for t in "$@"; do [ "$v" -ge "$t" ] && l=$((l + 1)); done
+    echo $l
+}
+
+notify() {
+    # to the logged-in user's desktop (the Nothing shell or Phosh shows it)
+    u=$(loginctl show-seat seat0 -p ActiveSession --value 2>/dev/null)
+    [ -n "$u" ] || return
+    uid=$(loginctl show-session "$u" -p User --value 2>/dev/null)
+    [ -n "$uid" ] || return
+    runuser -u "$(id -nu "$uid")" -- env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus \
+        notify-send -u critical -i dialog-warning "$1" "$2" 2>/dev/null &
+}
+
+apply() {
+    case $1 in
+        0) big=2500000; little=2000000; gpu=0;  bl=0 ;;
+        1) big=2000000; little=2000000; gpu=15; bl=0 ;;
+        2) big=1500000; little=1600000; gpu=30; bl=0 ;;
+        *) big=1000000; little=1200000; gpu=46; bl=30 ;;
+    esac
+    echo $little > $CPU/policy0/scaling_max_freq
+    echo $big > $CPU/policy4/scaling_max_freq
+    [ -n "$GPU" ] && echo $gpu > "$GPU"
+    [ -n "$BL" ] && echo $bl > "$BL"
+}
+
+while :; do
+    soc=$(cat "$SOC" 2>/dev/null || echo 0)
+    board=$(cat "$BOARD" 2>/dev/null || echo 0)
+    bat=$(( $(cat "$BAT" 2>/dev/null || echo 0) * 100 ))   # deci-°C -> m°C
+    want=$(lvl "$soc" 70000 80000 90000 100000)
+    w=$(lvl "$board" 42000 46000 50000 58000); [ "$w" -gt "$want" ] && want=$w
+    w=$(lvl "$bat" 45000 50000 55000 60000); [ "$w" -gt "$want" ] && want=$w
+    if [ "$want" -lt "$level" ]; then
+        # cool down with hysteresis: every sensor 4 °C under the threshold of the current level
+        down=$(lvl $((soc + 4000)) 70000 80000 90000 100000)
+        w=$(lvl $((board + 4000)) 42000 46000 50000 58000); [ "$w" -gt "$down" ] && down=$w
+        w=$(lvl $((bat + 4000)) 45000 50000 55000 60000); [ "$w" -gt "$down" ] && down=$w
+        want=$down
+    fi
+    [ -n "$TETRIS_THERMAL_DEBUG" ] && echo "soc=$soc board=$board battery=$bat level=$want"
+    if [ "$want" -ge 4 ]; then
+        echo "critical: soc=$soc board=$board battery=$bat m°C, powering off"
+        notify "Telefon zu heiß" "Es schaltet sich zum Schutz aus."
+        sleep 5
+        [ -n "$TETRIS_THERMAL_NO_POWEROFF" ] && { apply 3; exit 0; }
+        systemctl poweroff
+        exit 0
+    fi
+    if [ "$want" != "$level" ]; then
+        echo "level $want (soc=$soc board=$board battery=$bat m°C)"
+        [ "$want" -ge 2 ] && [ "$want" -gt "$level" ] && \
+            notify "Telefon wird warm" "Leistung gedrosselt, bis es abgekühlt ist."
+        apply "$want"
+        level=$want
+    fi
+    sleep 2
+done

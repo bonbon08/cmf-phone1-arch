@@ -10,7 +10,7 @@
  *   tetris-fp list         list enrolled fingers
  *   tetris-fp clear        remove all enrolled fingers
  *   tetris-fp props        sensor type and position
- *   tetris-fp unlockd      fingerprint unlock for the Phosh lock screen (tetris-fpd.service):
+ *   tetris-fp unlockd      fingerprint unlock for the lock screen (Phosh or Nothing shell) (tetris-fpd.service):
  *                          while the session is locked and the display on, show the
  *                          sensor spot and scan; unlock through logind on a match
  *
@@ -744,25 +744,31 @@ static void *signal_thread(void *arg)
 
 static char lock_session[32], lock_user[64];
 
-/* the graphical user session: id and user name */
+/* the graphical user session: id and user name. seat0's active session, not just the first
+ * one listed: after a restart of the shell service the old session can linger on seat0 */
 static bool find_session(void)
 {
-	FILE *f = popen("loginctl list-sessions --no-legend 2>/dev/null", "r");
-	char line[256], id[32], user[64], seat[32];
-	unsigned uid;
+	FILE *f = popen("loginctl show-seat seat0 -p ActiveSession --value 2>/dev/null", "r");
+	char line[256], id[32] = "", user[64], cmd[128];
 	bool found = false;
 
-	/* SESSION UID USER SEAT ...: the one on seat0 (not ssh logins) */
-	while (f && fgets(line, sizeof(line), f))
-		if (sscanf(line, "%31s %u %63s %31s", id, &uid, user, seat) == 4 && uid >= 1000 &&
-		    !strcmp(seat, "seat0")) {
+	if (f) {
+		if (fgets(line, sizeof(line), f))
+			sscanf(line, "%31s", id);
+		pclose(f);
+	}
+	if (!id[0])
+		return false;
+	snprintf(cmd, sizeof(cmd), "loginctl show-session %s -p Name --value 2>/dev/null", id);
+	f = popen(cmd, "r");
+	if (f) {
+		if (fgets(line, sizeof(line), f) && sscanf(line, "%63s", user) == 1) {
 			strcpy(lock_session, id);
 			strcpy(lock_user, user);
 			found = true;
-			break;
 		}
-	if (f)
 		pclose(f);
+	}
 	return found;
 }
 
