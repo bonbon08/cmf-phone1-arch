@@ -71,8 +71,9 @@ done < <(find "$KOUT" -name '*.ko')
 # Stock order isn't dependency order (Android's init modprobes via modules.dep),
 # so generate modules.dep for our set and let busybox modprobe resolve deps.
 # Mainline-style ports (mainline/test/build-for-phone.sh), claimed by init before the vendor drivers
+# NO_PORTS=1 leaves them out: the vendor drivers then bind the chips (fingerprint test)
 for ko in "$P"/out/rt6010-ko/*.ko; do
-    [[ -f $ko ]] && "$STRIP" --strip-debug -o "$MD/$(basename "$ko")" "$ko"
+    [[ -f $ko && -z ${NO_PORTS:-} ]] && "$STRIP" --strip-debug -o "$MD/$(basename "$ko")" "$ko"
 done
 
 depmod -b "$R" -F "$KOUT/System.map" -e "$KVER" 2>&1 | grep -v 'needs unknown symbol' | head -20 || true

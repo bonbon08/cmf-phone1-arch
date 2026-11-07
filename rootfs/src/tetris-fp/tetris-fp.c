@@ -563,6 +563,9 @@ struct sensor {
 /* only while an enroll/authenticate operation runs: otherwise a tap on the sensor spot
  * would switch the panel to high brightness for nothing */
 static volatile bool g_scanning;
+/* enroll: the high brightness stays on for the whole operation, the sensor needs it
+ * between the touches too; the touch thread then leaves hbm_mode alone */
+static volatile bool g_hold_hbm;
 
 struct touch_args {
 	AIBinder *session;
@@ -662,14 +665,18 @@ static void *touch_thread(void *arg)
 				p.major = p.minor = major > 0 ? major : 1;
 				call(t->session, S_POINTER_DOWN, "onPointerDown", w_pointer_down,
 				     &p, NULL, NULL);
-				panel_feature("hbm_mode", 1);
-				panel_feature("ui_status", 1);
+				if (!g_hold_hbm) {
+					panel_feature("hbm_mode", 1);
+					panel_feature("ui_status", 1);
+				}
 				call(t->session, S_UI_READY, "onUiReady", NULL, NULL, NULL, NULL);
 			} else if (!on && down) {
 				call(t->session, S_POINTER_UP, "onPointerUp", w_i32, &p.id, NULL,
 				     NULL);
-				panel_feature("ui_status", 0);
-				panel_feature("hbm_mode", 0);
+				if (!g_hold_hbm) {
+					panel_feature("ui_status", 0);
+					panel_feature("hbm_mode", 0);
+				}
 			}
 			down = on;
 		}
@@ -698,6 +705,8 @@ static void fod_mode(int mode)
  * scanning and switch the touch controller's fingerprint mode off */
 static AIBinder *g_session, *g_cancel;
 static bool g_scanned;
+static char lock_session[32], lock_user[64];
+static void overlay(const char *action);
 
 static void set_cancel(AIBinder *cancel)
 {
@@ -719,11 +728,14 @@ static bool st_finished(void)
 static void cleanup(void)
 {
 	g_scanning = false;
+	g_hold_hbm = false;
 	if (g_cancel)
 		call(g_cancel, 1, "cancel", NULL, NULL, NULL, NULL);
 	if (g_scanned) {
 		panel_feature("ui_status", 0);
 		panel_feature("hbm_mode", 0);
+		if (lock_user[0])
+			overlay("stop");
 	}
 	if (g_session)
 		call(g_session, S_CLOSE, "close", NULL, NULL, NULL, NULL);
@@ -742,7 +754,6 @@ static void *signal_thread(void *arg)
 
 /* --- unlockd ----------------------------------------------------------------------- */
 
-static char lock_session[32], lock_user[64];
 
 /* the graphical user session: id and user name. seat0's active session, not just the first
  * one listed: after a restart of the shell service the old session can linger on seat0 */
@@ -1054,7 +1065,14 @@ int main(int argc, char **argv)
 		printf("put your finger on the sensor, lift it, repeat\n");
 		if (call(session, S_ENROLL, "enroll", w_hat, &hat, r_binder, &cancel))
 			goto out;
+		/* the spot under the finger: without it the sensor image is dark ("dirty") */
+		if (find_session())
+			overlay("start");
 		set_cancel(cancel);
+		fod_mode(1);
+		g_hold_hbm = true;
+		panel_feature("ui_status", 1);
+		panel_feature("hbm_mode", 1);
 		ret = wait_done(120) ? 1 : 0;
 		call(session, S_REVOKE_CHALLENGE, "revokeChallenge", w_i64, &st.challenge, NULL,
 		     NULL);
@@ -1064,7 +1082,10 @@ int main(int argc, char **argv)
 		printf("touch the sensor\n");
 		if (call(session, S_AUTHENTICATE, "authenticate", w_i64, &op, r_binder, &cancel))
 			goto out;
+		if (find_session())
+			overlay("start");
 		set_cancel(cancel);
+		fod_mode(1);
 		ret = wait_done(30);
 		ret = ret == 0 ? 0 : ret == 1 ? 1 : 2;
 	}
