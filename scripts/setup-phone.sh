@@ -8,10 +8,12 @@
 #   5. camera app
 #   6. GPS client (tetris-gnss)
 #   7. fingerprint client (tetris-fp)
-# then enables GPU Phosh and reboots. Takes a while (libhybris and wlroots compile on
+#   8. the Nothing shell (nothing-wm + nothing-shell, phone layout; scripts/setup-nothing.sh)
+# then switches the GPU shell on and reboots into the Nothing shell (Phosh stays installed). Takes a while (libhybris and wlroots compile on
 # the phone) and needs internet on the phone (WLAN, or `sudo scripts/host-nat.sh up`).
 #
 # Usage: setup-phone.sh <halium-system.img>
+#   PHOSH=1 setup-phone.sh ...   keeps Phosh as the shell instead of the Nothing shell
 #   The image: LuneOS halium_arm64 GSI (webOS-ports/halium-images, release
 #   halium-luneos-20261005, halium_arm64 20261017-1); unpack it to the raw system.img.
 set -euo pipefail
@@ -50,6 +52,11 @@ echo "== GPS"
 echo "== fingerprint"
 "$SSH" 'make -C ~/tetris-fp && echo alarm | sudo -S -p "" sh -c "make -C ~/tetris-fp install && systemctl enable tetris-fp"'
 
-echo "== GPU Phosh on, reboot"
+if [ -z "${PHOSH:-}" ]; then
+    echo "== Nothing shell"
+    "$P/scripts/setup-nothing.sh"
+fi
+
+echo "== GPU shell on, reboot"
 "$SSH" 'echo alarm | sudo -S -p "" sh -c "touch /etc/tetris-android/gpu-shell; systemctl reboot"' || true
-echo "Done. After the reboot Phosh starts on the GPU (falls back to software if that fails)."
+echo "Done. After the reboot the shell starts on the GPU (falls back to software if that fails)."

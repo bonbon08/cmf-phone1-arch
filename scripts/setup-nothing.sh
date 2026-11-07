@@ -9,11 +9,25 @@
 # pkgbuilds/build-wlroots-phoc.sh. Otherwise pacman would pull Arch's stock wlroots, which has no
 # GPU path.
 #
-#   setup-nothing.sh [/path/to/Nothing_Wayland]   # default: ~/Nothing_Wayland
+#   setup-nothing.sh [/path/to/Nothing_Wayland]
+#     default: ~/Nothing_Wayland if it exists, else a fresh clone of $NOTHING_REPO
+#     ($NOTHING_REF, the phone layout branch) in out/Nothing_Wayland
 #   SUDO_PASS=...  if alarm's password is no longer "alarm"
 set -euo pipefail
 P=$(realpath "$(dirname "$0")/..")
-SRC=$(realpath "${1:-$HOME/Nothing_Wayland}")
+NOTHING_REPO=${NOTHING_REPO:-https://github.com/bonbon08/Nothing_Wayland.git}
+NOTHING_REF=${NOTHING_REF:-telefon-layout}
+SRC=${1:-}
+if [ -z "$SRC" ]; then
+    if [ -f "$HOME/Nothing_Wayland/PKGBUILD" ]; then
+        SRC=$HOME/Nothing_Wayland
+    else
+        rm -rf "$P/out/Nothing_Wayland"
+        git clone --depth 1 -b "$NOTHING_REF" "$NOTHING_REPO" "$P/out/Nothing_Wayland"
+        SRC=$P/out/Nothing_Wayland
+    fi
+fi
+SRC=$(realpath "$SRC")
 SSH="$P/scripts/phone-ssh.sh"
 PASS=${SUDO_PASS:-alarm}
 sudo_() { "$SSH" "echo '$PASS' | sudo -S -p '' sh -c '$1'"; }
@@ -27,10 +41,11 @@ echo "== wlroots (ours)"
 }
 
 echo "== packages"
-sudo_ 'pacman -Sy --noconfirm --needed base-devel meson ninja wayland-protocols gtk4 gtk4-layer-shell libadwaita python-gobject python-cairo python-numpy gnome-online-accounts accountsservice polkit-gnome xdg-desktop-portal-gtk xdg-desktop-portal-wlr xorg-xwayland'
+sudo_ 'pacman -Sy --noconfirm --needed base-devel meson ninja wayland-protocols gtk4 gtk4-layer-shell libadwaita python-gobject python-cairo python-numpy gnome-online-accounts accountsservice polkit-gnome xdg-desktop-portal-gtk xdg-desktop-portal-wlr xorg-xwayland squeekboard grim'
 
 echo "== source"
-tar -C "$SRC" --exclude=./.git --exclude=./src --exclude=./pkg --exclude='./*.pkg.tar.*' -cf - . \
+tar -C "$SRC" --exclude=./.git --exclude=./src --exclude=./pkg --exclude=./build \
+    --exclude=./.pytest_cache --exclude='./*.pkg.tar.*' -cf - . \
     | "$SSH" 'rm -rf ~/build/nothing-de && mkdir -p ~/build/nothing-de && tar -C ~/build/nothing-de -xf -'
 
 echo "== build nothing-de (on the phone)"

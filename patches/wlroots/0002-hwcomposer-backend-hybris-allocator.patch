@@ -322,7 +322,7 @@ new file mode 100644
 index 0000000..0ad4f8d
 --- /dev/null
 +++ b/backend/hwcomposer/output.c
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,232 @@
 +#include <assert.h>
 +#include <inttypes.h>
 +#include <poll.h>
@@ -341,7 +341,9 @@ index 0000000..0ad4f8d
 +	WLR_OUTPUT_STATE_BACKEND_OPTIONAL |
 +	WLR_OUTPUT_STATE_BUFFER |
 +	WLR_OUTPUT_STATE_ENABLED |
-+	WLR_OUTPUT_STATE_MODE;
++	WLR_OUTPUT_STATE_MODE |
++	/* rotation: the renderer draws rotated into the native-size buffer */
++	WLR_OUTPUT_STATE_TRANSFORM;
 +
 +static const struct wlr_output_impl output_impl;
 +

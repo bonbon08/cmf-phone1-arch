@@ -1,6 +1,6 @@
 # Arch Linux ARM + Phosh on the CMF Phone 1
 
-Arch Linux ARM with the Phosh mobile shell on the **CMF Phone 1** by Nothing
+Arch Linux ARM with the Nothing shell (or Phosh) on the **CMF Phone 1** by Nothing
 (codename **Tetris**, MediaTek Dimensity 7300 / MT6878). It runs on Nothing's own
 Android kernel (6.1) with the MediaTek vendor drivers. The Android hardware
 abstraction layers for GPU, modem and camera run in a small Halium container and are
@@ -235,27 +235,36 @@ desktop: just reboot, or press the power key). Known: with the panel out of seat
 can still report seat0 as graphical, and GDM tries (and gives up on) a local login screen
 three times at boot; `tetris-display-off` holds the panel, so nothing shows.
 
-## Nothing shell instead of Phosh
+## Nothing shell (default)
 
-The Nothing desktop ([Nothing_Wayland](https://github.com/bonbon08/Nothing_Wayland)) has a
-phone layout: status bar on top, app grid as home screen, home bar at the bottom, windows
-between them. It runs on the same stack as Phosh (nothing-wm in place of phoc, the same GPU or
-software choice and crash guard). Phosh stays installed.
+The phone runs the Nothing desktop ([Nothing_Wayland](https://github.com/bonbon08/Nothing_Wayland),
+branch `telefon-layout`) in its phone layout: status bar on top, app grid with search as home
+screen, home bar at the bottom. It uses the same stack as Phosh (nothing-wm in place of phoc,
+the same GPU or software choice and crash guard). `scripts/setup-phone.sh` builds and switches
+to it at the end (`PHOSH=1` keeps Phosh); on an installed phone:
 
 ```sh
-scripts/setup-nothing.sh ~/Nothing_Wayland   # needs wlroots0.20 (ours) on the phone
-sudo reboot                                  # on the phone
+scripts/setup-nothing.sh [~/Nothing_Wayland]   # without a path: ~/Nothing_Wayland or a fresh clone
+sudo reboot                                    # on the phone
 ```
 
-Back to Phosh: `sudo rm /etc/tetris-shell && sudo reboot`. The script builds `nothing-de`
-on the phone from a local checkout. The image from `scripts/build-rootfs.sh` does not
-include it yet.
+Back to Phosh: `sudo rm /etc/tetris-shell && sudo reboot`. Phosh stays installed.
 
-Untested on the phone: the GPU path (hwcomposer backend under nothing-wm), the portrait
-layout and touch input. Missing against Phosh: auto-rotation, and the fingerprint unlock. It is
-wired to Phosh's lock screen (`tetris-fpd` waits for Phosh's LockedHint), and the Nothing lock
-screen does not set that yet, so the password is the only way in. The Phosh settings apps
-are not part of this session either.
+| Gesture / key | Does |
+|---|---|
+| Swipe down from the status bar | Control centre (WLAN, Bluetooth, rotation lock, volume, brightness) |
+| Short / long swipe up from the home bar | Home screen / open apps (swipe a card sideways to close it) |
+| Power key short / held | Screen off and lock, screen on / power menu (also on the lock screen) |
+| Volume keys | Volume with an on-screen display, also locked and with the screen off |
+| Turning the phone | The screen turns with it (sensor: `tetris-sensors`); locked it stays upright |
+
+The on-screen keyboard is squeekboard (input-method protocol), it shows up for text fields.
+The fingerprint unlock works with the Nothing lock screen (LockedHint, logind Unlock; the
+sensor spot is drawn above the lock screen). The screen goes off after 60 s without touch
+(Einstellungen → Telefon). Apps get `GLIBC_TUNABLES=glibc.rtld.optional_static_tls=16384`
+in GPU mode (`tetris-nothing-session`), else PyGObject apps such as the settings app abort
+with "static TLS block". Rotation needs `WLR_OUTPUT_STATE_TRANSFORM` in our wlroots
+hwcomposer backend (patches/wlroots/0002).
 
 ## Risks
 
