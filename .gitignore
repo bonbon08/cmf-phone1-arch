@@ -12,6 +12,7 @@
 !/kernel/
 !/initramfs/
 !/rootfs/
+!/installer/
 
 # build products of the out-of-tree modules and tools
 *.o
