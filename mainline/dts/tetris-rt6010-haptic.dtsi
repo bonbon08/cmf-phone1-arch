@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * CMF Phone 1 (Tetris): RT6010 haptic driver on I2C0, for the mainline driver
+ * (drivers/input/misc/rt6010-haptic.c). The vendor tree uses the compatible
+ * "ics,haptic_rt" and the properties gpio-en / gpio-irq instead.
+ *
+ * gpio 74 powers and resets the chip. The vendor driver also drives gpio 9
+ * (the IRQ pin) during reset. The mainline driver does not use that pin.
+ */
+
+&i2c0 {
+	haptic@5f {
+		compatible = "richtek,rt6010";
+		reg = <0x5f>;
+		enable-gpios = <&pio 74 GPIO_ACTIVE_HIGH>;
+	};
+};

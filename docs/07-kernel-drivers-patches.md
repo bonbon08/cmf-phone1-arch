@@ -235,3 +235,12 @@ matters, because `git apply` applies them in that order.
 | `!! not applied` during configuration | an option from `linux.config` was not applied | check the option's dependencies (`make menuconfig`), then `build-kernel.sh config` |
 
 More errors and logs are in [09-troubleshooting.md](09-troubleshooting.md).
+
+## 7.7 Mainline port: RT6010 haptic driver
+
+The phone's vibration motor is driven by the RT6010 chip. It runs natively on the vendor kernel, but the
+driver depends on Nothing's own kernel hooks. The directory `mainline/` holds a port that builds against
+mainline Linux 7.x. The patches are in `patches/mainline/`: first the device-tree binding, then the driver.
+The driver exposes the motor as a force-feedback device, so `feedbackd` can use it directly and
+`tetris-vibra` is not needed. The port is **not tested on hardware yet**. See
+[mainline/README.md](../mainline/README.md) for the build steps and the status.

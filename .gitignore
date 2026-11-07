@@ -13,6 +13,7 @@
 !/initramfs/
 !/rootfs/
 !/installer/
+!/mainline/
 
 # build products of the out-of-tree modules and tools
 *.o

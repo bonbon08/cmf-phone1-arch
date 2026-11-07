@@ -1,0 +1,54 @@
+diff --git a/Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml b/Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml
+new file mode 100644
+index 000000000..1863441af
+--- /dev/null
++++ b/Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml
+@@ -0,0 +1,48 @@
++# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/input/richtek,rt6010-haptic.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Richtek RT6010 haptic driver for LRA actuators
++
++maintainers:
++  - Jan Schmitt <mail@jan-schmitt.eu>
++
++description: |
++  The RT6010 drives a linear resonant actuator (LRA) over I2C and plays back
++  waveforms stored in its RAM. The driver exposes the actuator as a
++  force-feedback input device. The chip configuration is read from the firmware
++  file haptic_config.bin.
++
++properties:
++  compatible:
++    const: richtek,rt6010
++
++  reg:
++    maxItems: 1
++
++  enable-gpios:
++    description: GPIO that powers and resets the chip (active high).
++    maxItems: 1
++
++required:
++  - compatible
++  - reg
++  - enable-gpios
++
++additionalProperties: false
++
++examples:
++  - |
++    i2c {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        haptic@5f {
++            compatible = "richtek,rt6010";
++            reg = <0x5f>;
++            enable-gpios = <&pio 74 GPIO_ACTIVE_HIGH>;
++        };
++    };
++...
