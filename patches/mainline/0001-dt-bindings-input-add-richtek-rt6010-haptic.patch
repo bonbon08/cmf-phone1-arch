@@ -1,9 +1,9 @@
 diff --git a/Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml b/Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml
 new file mode 100644
-index 000000000..1863441af
+index 000000000..0238dcff0
 --- /dev/null
 +++ b/Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,58 @@
 +# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
 +%YAML 1.2
 +---
@@ -13,7 +13,7 @@ index 000000000..1863441af
 +title: Richtek RT6010 haptic driver for LRA actuators
 +
 +maintainers:
-+  - Jan Schmitt <mail@jan-schmitt.eu>
++  - CMF Phone 1 (Tetris) port
 +
 +description: |
 +  The RT6010 drives a linear resonant actuator (LRA) over I2C and plays back
@@ -23,7 +23,10 @@ index 000000000..1863441af
 +
 +properties:
 +  compatible:
-+    const: richtek,rt6010
++    oneOf:
++      - const: richtek,rt6010
++      - description: vendor device tree of the CMF Phone 1, same chip
++        const: ics,haptic_rt
 +
 +  reg:
 +    maxItems: 1
@@ -32,10 +35,17 @@ index 000000000..1863441af
 +    description: GPIO that powers and resets the chip (active high).
 +    maxItems: 1
 +
++  gpio-en:
++    description: vendor name of enable-gpios, accepted by kernels before 6.3 (vendor device tree).
++    maxItems: 1
++
++anyOf:
++  - required: [enable-gpios]
++  - required: [gpio-en]
++
 +required:
 +  - compatible
 +  - reg
-+  - enable-gpios
 +
 +additionalProperties: false
 +

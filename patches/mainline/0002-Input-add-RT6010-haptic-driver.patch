@@ -1,13 +1,12 @@
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 782389bd5..2fb04ca5c 100644
+index 782389bd5..ebd5f5a14 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -23450,6 +23450,12 @@ F:	include/linux/rhashtable.h
+@@ -23450,6 +23450,11 @@ F:	include/linux/rhashtable.h
  F:	lib/rhashtable.c
  F:	lib/test_rhashtable.c
  
 +RICHTEK RT6010 HAPTIC DRIVER
-+M:	Jan Schmitt <mail@jan-schmitt.eu>
 +S:	Maintained
 +F:	Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml
 +F:	drivers/input/misc/rt6010-haptic.c
@@ -53,10 +52,10 @@ index 1339619f0..7fd7acc7b 100644
  obj-$(CONFIG_INPUT_AXP20X_PEK)		+= axp20x-pek.o
 diff --git a/drivers/input/misc/rt6010-haptic.c b/drivers/input/misc/rt6010-haptic.c
 new file mode 100644
-index 000000000..4d8c6a569
+index 000000000..865e00e68
 --- /dev/null
 +++ b/drivers/input/misc/rt6010-haptic.c
-@@ -0,0 +1,541 @@
+@@ -0,0 +1,559 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Driver for the RT6010 haptic driver (LRA actuator, ICSense / Richtek) in the
@@ -87,6 +86,7 @@ index 000000000..4d8c6a569
 +#include <linux/module.h>
 +#include <linux/mutex.h>
 +#include <linux/regmap.h>
++#include <linux/version.h>
 +#include <linux/workqueue.h>
 +
 +#define RT6010_NAME			"rt6010-haptic"
@@ -523,7 +523,12 @@ index 000000000..4d8c6a569
 +	return 0;
 +}
 +
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 +static int rt6010_probe(struct i2c_client *client)
++#else
++/* Linux 6.1 and older (the vendor kernel of the phone) pass the id table entry too */
++static int rt6010_probe(struct i2c_client *client, const struct i2c_device_id *id)
++#endif
 +{
 +	struct rt6010_haptic *h;
 +	int ret;
@@ -546,9 +551,18 @@ index 000000000..4d8c6a569
 +	if (IS_ERR(h->regmap))
 +		return PTR_ERR(h->regmap);
 +
-+	h->enable = devm_gpiod_get(&client->dev, "enable", GPIOD_OUT_LOW);
++	h->enable = devm_gpiod_get_optional(&client->dev, "enable", GPIOD_OUT_LOW);
 +	if (IS_ERR(h->enable))
 +		return dev_err_probe(&client->dev, PTR_ERR(h->enable), "no enable GPIO\n");
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++	if (!h->enable) {
++		/* Vendor device tree names the same pin "gpio-en" (devm_gpiod_get_from_of_node is gone since 6.3) */
++		h->enable = devm_gpiod_get_from_of_node(&client->dev, client->dev.of_node,
++							"gpio-en", 0, GPIOD_OUT_LOW, "rt6010-en");
++		if (IS_ERR(h->enable))
++			return dev_err_probe(&client->dev, PTR_ERR(h->enable), "no enable GPIO\n");
++	}
++#endif
 +
 +	rt6010_hw_reset(h);
 +
@@ -575,6 +589,9 @@ index 000000000..4d8c6a569
 +
 +static const struct of_device_id rt6010_of_match[] = {
 +	{ .compatible = "richtek,rt6010" },
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++	{ .compatible = "ics,haptic_rt" },	/* vendor device tree (kernel 6.1) */
++#endif
 +	{ }
 +};
 +MODULE_DEVICE_TABLE(of, rt6010_of_match);

@@ -7,7 +7,7 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Richtek RT6010 haptic driver for LRA actuators
 
 maintainers:
-  - Jan Schmitt <mail@jan-schmitt.eu>
+  - CMF Phone 1 (Tetris) port
 
 description: |
   The RT6010 drives a linear resonant actuator (LRA) over I2C and plays back
@@ -17,7 +17,10 @@ description: |
 
 properties:
   compatible:
-    const: richtek,rt6010
+    oneOf:
+      - const: richtek,rt6010
+      - description: vendor device tree of the CMF Phone 1, same chip
+        const: ics,haptic_rt
 
   reg:
     maxItems: 1
@@ -26,10 +29,17 @@ properties:
     description: GPIO that powers and resets the chip (active high).
     maxItems: 1
 
+  gpio-en:
+    description: vendor name of enable-gpios, accepted by kernels before 6.3 (vendor device tree).
+    maxItems: 1
+
+anyOf:
+  - required: [enable-gpios]
+  - required: [gpio-en]
+
 required:
   - compatible
   - reg
-  - enable-gpios
 
 additionalProperties: false
 

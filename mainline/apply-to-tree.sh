@@ -38,7 +38,6 @@ ma = pathlib.Path(sys.argv[1]) / "MAINTAINERS"
 s = ma.read_text()
 anchor = "RICOH R5C592 MEMORYSTICK DRIVER\n"
 entry = ("RICHTEK RT6010 HAPTIC DRIVER\n"
-         "M:\tJan Schmitt <mail@jan-schmitt.eu>\n"
          "S:\tMaintained\n"
          "F:\tDocumentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml\n"
          "F:\tdrivers/input/misc/rt6010-haptic.c\n\n")

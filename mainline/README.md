@@ -52,12 +52,31 @@ make ARCH=arm64 LLVM=1 W=1 drivers/input/misc/rt6010-haptic.o
 python3 mainline/tests/check_haptic_config.py out/vendor-extract/vendor/firmware/haptic_config.bin
 ```
 
+## Test on the phone (current kernel)
+
+The module is built against the kernel the phone runs (`out/kernel`, 6.1 vendor tree). It replaces
+the vendor haptic driver for the test, so the vendor build and the port can be compared.
+
+```sh
+mainline/test/build-for-phone.sh          # builds out/rt6010-ko/rt6010-haptic.ko
+mainline/test/deploy-and-test.sh          # copies it to the phone, swaps the driver, vibrates 3 times
+mainline/test/deploy-and-test.sh restore  # unloads it, brings back the vendor haptic driver
+```
+
+`deploy-and-test.sh` stops `tetris-vibra` (it writes to the vendor LED interface), unloads
+`haptic_sfdc` and `haptic`, loads the port and runs `haptic-ff-test.py`, which uploads one
+force-feedback effect to the input device `rt6010-haptic` and plays it. The phone must be booted into
+Arch and reachable over USB.
+
 ## Status
 
-- The driver compiles against mainline 7.3 for arm64 with `W=1` without warnings in its own file.
+- Builds for mainline 7.3 (arm64, `W=1`) and for the phone's kernel 6.1.162 without warnings in the
+  driver file. Both builds use the same source.
+- The `gpio-en` name and `ics,haptic_rt` compatible of the vendor device tree are accepted by kernels
+  before 6.3 only, because `devm_gpiod_get_from_of_node()` is gone from 6.3 on.
 - `tests/check_haptic_config.py` accepts the firmware file of the B4.1 build.
-- **Not tested on hardware.** The register sequence was taken from the vendor code. Whether the
-  phone vibrates with the mainline driver has to be checked on the device (`fftest`, or `evtest`
-  on the new input device).
+- The FF test structures match the C headers (`sizeof(struct ff_effect) == 48`, same ioctl numbers).
+- **Not yet tested on hardware.** Whether the motor vibrates with the port is what the phone test checks.
 - Known deviations from the vendor code: the IRQ pin is not driven during reset, and the ADC offset
   readout is left out.
+- The directory is for this repository only. Nothing here is meant for the mainline kernel.

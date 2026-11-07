@@ -28,6 +28,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/regmap.h>
+#include <linux/version.h>
 #include <linux/workqueue.h>
 
 #define RT6010_NAME			"rt6010-haptic"
@@ -464,7 +465,12 @@ static int rt6010_init_input(struct rt6010_haptic *h, const char *name)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 static int rt6010_probe(struct i2c_client *client)
+#else
+/* Linux 6.1 and older (the vendor kernel of the phone) pass the id table entry too */
+static int rt6010_probe(struct i2c_client *client, const struct i2c_device_id *id)
+#endif
 {
 	struct rt6010_haptic *h;
 	int ret;
@@ -487,9 +493,18 @@ static int rt6010_probe(struct i2c_client *client)
 	if (IS_ERR(h->regmap))
 		return PTR_ERR(h->regmap);
 
-	h->enable = devm_gpiod_get(&client->dev, "enable", GPIOD_OUT_LOW);
+	h->enable = devm_gpiod_get_optional(&client->dev, "enable", GPIOD_OUT_LOW);
 	if (IS_ERR(h->enable))
 		return dev_err_probe(&client->dev, PTR_ERR(h->enable), "no enable GPIO\n");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
+	if (!h->enable) {
+		/* Vendor device tree names the same pin "gpio-en" (devm_gpiod_get_from_of_node is gone since 6.3) */
+		h->enable = devm_gpiod_get_from_of_node(&client->dev, client->dev.of_node,
+							"gpio-en", 0, GPIOD_OUT_LOW, "rt6010-en");
+		if (IS_ERR(h->enable))
+			return dev_err_probe(&client->dev, PTR_ERR(h->enable), "no enable GPIO\n");
+	}
+#endif
 
 	rt6010_hw_reset(h);
 
@@ -516,6 +531,9 @@ static void rt6010_remove(struct i2c_client *client)
 
 static const struct of_device_id rt6010_of_match[] = {
 	{ .compatible = "richtek,rt6010" },
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
+	{ .compatible = "ics,haptic_rt" },	/* vendor device tree (kernel 6.1) */
+#endif
 	{ }
 };
 MODULE_DEVICE_TABLE(of, rt6010_of_match);
