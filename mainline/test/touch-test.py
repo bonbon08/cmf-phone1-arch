@@ -11,7 +11,7 @@ import struct
 import sys
 import time
 
-NAME = "focaltech-ft3519"
+NAME = "fts_ts"
 EV_SYN, EV_ABS = 0x00, 0x03
 ABS_MT_SLOT, ABS_MT_TRACKING_ID, ABS_MT_POSITION_X, ABS_MT_POSITION_Y = 0x2F, 0x39, 0x35, 0x36
 EVENT = struct.Struct("@llHHi")  # struct input_event on a 64-bit kernel

@@ -20,6 +20,9 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/uaccess.h>
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
 #include <linux/version.h>
@@ -28,6 +31,11 @@
 #define FT_MAX_POINTS		10
 #define FT_REG_TOUCH		0x01
 #define FT_REG_CHIP_ID		0xA3
+#define FT_REG_FOD_EN		0xCF	/* fingerprint mode: 0x03 on, 0 off (vendor focaltech_common.h) */
+#define FT_REG_FOD_VALUE	0x03
+#define FT_FOD_DISABLE		0
+#define FT_FOD_ENABLE		1
+#define FT_FOD_UNLOCK		2
 #define FT_TOUCH_LEN		(2 + 6 * FT_MAX_POINTS)
 #define FT_EVENT_DOWN		0
 #define FT_EVENT_UP		1
@@ -50,6 +58,8 @@ struct ft3519 {
 	u32 max_x;
 	u32 max_y;
 	struct mutex lock;	/* serialises I2C reads from the IRQ thread and probe */
+	int fod_state;		/* what /proc/touchpanel/fod_mode last set */
+	struct proc_dir_entry *proc_dir;
 };
 
 /* Reads the touch report; the chip answers a read after register 0x01 */
@@ -156,6 +166,14 @@ static void ft_power_on(struct ft3519 *ft)
 	msleep(200);	/* the chip needs this long before the first report */
 }
 
+static int ft_write_reg(struct ft3519 *ft, u8 reg, u8 val)
+{
+	u8 buf[2] = { reg, val };
+	struct i2c_msg msg = { .addr = ft->client->addr, .flags = 0, .len = 2, .buf = buf };
+
+	return i2c_transfer(ft->client->adapter, &msg, 1) == 1 ? 0 : -EIO;
+}
+
 static int ft_read_chip_id(struct ft3519 *ft, u8 *id)
 {
 	u8 reg = FT_REG_CHIP_ID;
@@ -167,9 +185,87 @@ static int ft_read_chip_id(struct ft3519 *ft, u8 *id)
 	return i2c_transfer(ft->client->adapter, msgs, ARRAY_SIZE(msgs)) == ARRAY_SIZE(msgs) ? 0 : -EIO;
 }
 
+static void ft_remove_proc(void *data)
+{
+	struct ft3519 *ft = data;
+
+	if (ft->proc_dir)
+		remove_proc_subtree("touchpanel", NULL);
+}
+
 static void ft_regulator_off(void *data)
 {
 	regulator_disable(data);
+}
+
+/*
+ * /proc/touchpanel/fod_mode, the interface tetris-fp uses (the same as the vendor driver):
+ * 1 turns the fingerprint mode on (register 0xCF), 0 turns it off, 2 only unlocks.
+ */
+static int ft_fod_show(struct seq_file *s, void *unused)
+{
+	struct ft3519 *ft = s->private;
+
+	seq_printf(s, "Fod Mode:%d\n", ft->fod_state);
+	return 0;
+}
+
+static int ft_fod_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ft_fod_show, pde_data(inode));
+}
+
+static ssize_t ft_fod_write(struct file *file, const char __user *ubuf, size_t count,
+			    loff_t *ppos)
+{
+	struct ft3519 *ft = pde_data(file_inode(file));
+	char buf[20] = "";
+	u32 mode;
+	int ret = 0;
+
+	if (copy_from_user(buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+		return -EFAULT;
+	if (kstrtouint(buf, 0, &mode))
+		return -EINVAL;
+
+	mutex_lock(&ft->lock);
+	switch (mode) {
+	case FT_FOD_ENABLE:
+		ret = ft_write_reg(ft, FT_REG_FOD_EN, FT_REG_FOD_VALUE);
+		break;
+	case FT_FOD_DISABLE:
+		ret = ft_write_reg(ft, FT_REG_FOD_EN, 0);
+		break;
+	case FT_FOD_UNLOCK:
+		break;
+	default:
+		ret = -EINVAL;
+	}
+	if (!ret)
+		ft->fod_state = mode;
+	mutex_unlock(&ft->lock);
+
+	return ret ? ret : count;
+}
+
+static const struct proc_ops ft_fod_fops = {
+	.proc_open = ft_fod_open,
+	.proc_write = ft_fod_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
+static int ft_init_proc(struct ft3519 *ft)
+{
+	ft->proc_dir = proc_mkdir("touchpanel", NULL);
+	if (!ft->proc_dir)
+		return -ENOMEM;
+	if (!proc_create_data("fod_mode", 0664, ft->proc_dir, &ft_fod_fops, ft)) {
+		remove_proc_subtree("touchpanel", NULL);
+		return -ENOMEM;
+	}
+	return 0;
 }
 
 static int ft_init_input(struct ft3519 *ft)
@@ -181,7 +277,8 @@ static int ft_init_input(struct ft3519 *ft)
 	if (!input)
 		return -ENOMEM;
 
-	input->name = "focaltech-ft3519";
+	/* the name tetris-fp looks for (open_touchscreen), same as the vendor driver */
+	input->name = "fts_ts";
 	input->id.bustype = BUS_I2C;
 	input->phys = "i2c/focaltech-ft3519";
 	ret = input_mt_init_slots(input, FT_MAX_POINTS,
@@ -264,6 +361,11 @@ static int ft_probe(struct i2c_client *client, const struct i2c_device_id *id)
 					IRQF_ONESHOT, FT_NAME, ft);
 	if (ret)
 		return dev_err_probe(dev, ret, "cannot request the interrupt\n");
+
+	ret = ft_init_proc(ft);
+	if (ret)
+		return dev_err_probe(dev, ret, "cannot create /proc/touchpanel\n");
+	devm_add_action_or_reset(dev, ft_remove_proc, ft);
 
 	dev_info(dev, "touch ready, %ux%u\n", ft->max_x, ft->max_y);
 	return 0;

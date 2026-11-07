@@ -32,7 +32,7 @@ if [[ ${1:-} == --flash ]]; then
     echo "== boot images built (out/debug-*.img)"
     echo "== rebooting the phone into fastboot"
     # reboot(2) with the argument "bootloader", as the initramfs reboot-mode tool does
-    "$SSH" "echo '$PASS' | sudo -S -p '' sync; echo '$PASS' | sudo -S -p '' python3 -c 'import ctypes; ctypes.CDLL(None).syscall(142,0xfee1dead,672274793,0xA1B2C3D4,b\"bootloader\")'" >/dev/null 2>&1 || true
+    timeout 15 "$SSH" "echo '$PASS' | sudo -S -p '' sync; echo '$PASS' | sudo -S -p '' python3 -c 'import ctypes; ctypes.CDLL(None).syscall(142,0xfee1dead,672274793,0xA1B2C3D4,b\"bootloader\")'" >/dev/null 2>&1 || true
     for _ in $(seq 30); do fastboot devices 2>/dev/null | grep -q . && break; sleep 3; done
     fastboot devices | grep -q . || { echo "no device in fastboot" >&2; exit 1; }
     echo "== flashing slot b"
