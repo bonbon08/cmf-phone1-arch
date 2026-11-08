@@ -308,7 +308,9 @@ hwcomposer backend (patches/wlroots/0002).
 
 Goal: the phone should run a mainline 7.x kernel instead of Nothing's 6.1 kernel. The table tracks what
 is still tied to the Nothing kernel. "Blocker" says what has to change first. Status values: **done**,
-**in progress**, **open**, **blocked** (needs a proprietary blob or a driver nobody has written yet).
+**built for 7.x, tested on the vendor kernel** (builds against mainline 7.3 and works on the phone with
+Nothing's 6.1 kernel, but has not run on a 7.x kernel yet), **in progress**, **open**, **blocked** (needs
+a proprietary blob or a driver nobody has written yet).
 
 ### Open features
 
@@ -320,8 +322,8 @@ is still tied to the Nothing kernel. "Blocker" says what has to change first. St
 | Headset jack | open | Analog headsets via a USB-C adapter, untested |
 | Fingerprint with the mainline touch port | done | The trusted app only captures after the touch controller reports a finger on the spot (FOD info register `0xE1`, Goodix `FINGER_DOWN` via the vendor notifier `touchpanel_event_call_notifier`) followed by `UI_READY` (`hbm_mode` and `ui_status` set by `tetris-fp` on each touch). The port reads the FOD info and calls the notifier (taken with `symbol_get`, no hard dependency); unlock tested on the phone with the port bound (`match, unlocking session`). On mainline 7.x the notifier module does not exist, so the Goodix side needs its own way to get the finger-down. Lessons from the vendor driver: set the FOD mode again a few times early in a scan (the controller drops it right after the display comes on), light more than the sensor radius (images otherwise stay just below the quality threshold), allow 10 min for enrollment, and run only one HAL client at a time (`tetris-fp list` during an enrollment cancels it) |
 | Battery gauge oops | open | `mt6375_battery` can NULL-dereference in `__wake_up_common` from `coulomb_irq` and reset the phone. Root cause not found; the probe path is correct. A pstore log of this is kept in `out/` |
-| Touch on mainline | in progress | `mainline/drivers/input/touchscreen/focaltech-ft3519.c` claims the FT3519 at boot (chip id 0x54, 1080x2400, 10 slots) and reports touches. The FOD/fingerprint path works (fingerprint unlock tested). Missing: gestures, double-tap wake |
-| Vibration on mainline | in progress | The port builds for 7.3 and runs on 6.1. Mainline-only check still open |
+| Touch on mainline | built for 7.x, tested on the vendor kernel | `mainline/drivers/input/touchscreen/focaltech-ft3519.c` builds against mainline 7.3 without warnings (arm64, `W=1`, clang 23); not run on a 7.x kernel yet. Tested on the vendor kernel 6.1: claims the FT3519 at boot (chip id 0x54, 1080x2400, 10 slots), touches, fingerprint unlock (FOD path). Missing: gestures, double-tap wake |
+| Vibration on mainline | built for 7.x, tested on the vendor kernel | `mainline/drivers/input/misc/rt6010-haptic.c` builds against mainline 7.3; not run on a 7.x kernel yet. Tested on the vendor kernel 6.1: force-feedback vibration |
 
 ### What a mainline 7.x kernel needs
 
@@ -329,10 +331,10 @@ is still tied to the Nothing kernel. "Blocker" says what has to change first. St
 |---|---|---|---|---|
 | Kernel config | `kernel/linux.config` on top of Nothing's defconfig | a mainline defconfig plus our fragment | list the options we need, check which exist upstream | open |
 | SO_PEERPIDFD | backported (`patches/kernel/0001`) | upstream since 6.5 | drop the patch | done on paper, check on 7.x |
-| Haptics (RT6010) | vendor `haptic` driver, ~4400 lines | port in `mainline/drivers/input/misc/rt6010-haptic.c` | mainline 7.3 builds; runs on 6.1 | in progress |
+| Haptics (RT6010) | vendor `haptic` driver, ~4400 lines | port in `mainline/drivers/input/misc/rt6010-haptic.c` | mainline 7.3 builds; runs on 6.1 | built for 7.x, tested on the vendor kernel |
 | Battery / charger | vendor `mt6375` gauge and charger, patched (`patches/kernel_device_modules/0001`) | check whether 7.x has MT6375 support | the gauge crash above | open |
 | Display panels | vendor `s6e8fc3x02` and others, HBM patch `0003` | upstream DRM panel drivers, plus the HBM notification | the notification to the fingerprint driver is ours | open |
-| Touch | vendor `focaltech` ft3519 with resume patch `0004`; basic port in `mainline/` runs on 6.1 | the read path and the FOD path work on the phone (chip 0x54, fingerprint unlock). Gestures are missing; the resume fix `0004` has to be carried over | gestures; the FOD notifier is vendor-only | in progress |
+| Touch | vendor `focaltech` ft3519 with resume patch `0004`; basic port in `mainline/` runs on 6.1 | the read path and the FOD path work on the phone (chip 0x54, fingerprint unlock). Gestures are missing; the resume fix `0004` has to be carried over | gestures; the FOD notifier is vendor-only | built for 7.x, tested on the vendor kernel |
 | Sensors | SCP sensor hub `/dev/hf_manager` (vendor) | an upstream sensor-hub driver, or keep the vendor one | `tetris-sensors` talks to `/dev/hf_manager` | blocked |
 | Audio codec | MT6369 plus aw882xx, UCM profile | ALSA codec drivers for MT6369 and aw882xx | patch `0002` (mixer switch read) | open |
 | GPU (Mali-G615) | vendor Mali kernel module, used through libhybris | a mainline DRM driver for this GPU | check whether a mainline driver supports the G615. Until then the Halium container and libhybris stay | blocked |
