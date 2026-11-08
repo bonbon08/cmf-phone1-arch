@@ -698,6 +698,8 @@ static void fod_mode(int mode)
  * scanning and switch the touch controller's fingerprint mode off */
 static AIBinder *g_session, *g_cancel;
 static bool g_scanned;
+static char lock_session[32], lock_user[64];
+static void overlay(const char *action);
 
 static void set_cancel(AIBinder *cancel)
 {
@@ -724,6 +726,8 @@ static void cleanup(void)
 	if (g_scanned) {
 		panel_feature("ui_status", 0);
 		panel_feature("hbm_mode", 0);
+		if (lock_user[0])
+			overlay("stop");
 	}
 	if (g_session)
 		call(g_session, S_CLOSE, "close", NULL, NULL, NULL, NULL);
@@ -742,7 +746,6 @@ static void *signal_thread(void *arg)
 
 /* --- unlockd ----------------------------------------------------------------------- */
 
-static char lock_session[32], lock_user[64];
 
 /* the graphical user session: id and user name. seat0's active session, not just the first
  * one listed: after a restart of the shell service the old session can linger on seat0 */
@@ -853,6 +856,11 @@ static void unlockd(AIBinder *session)
 		 * to normal soon */
 		do {
 			ret = wait_done(1);
+			/* right after the display comes on the touch controller can still be
+			 * resuming and drop the mode switch: no FOD finger-down, no capture.
+			 * Switch it on again a few times early in the scan. */
+			if (secs == 0 || secs == 1 || secs == 3)
+				fod_mode(1);
 		} while ((ret == -ETIMEDOUT || ret == 1) && ++secs < 60 && session_locked() &&
 			 display_on());
 		if (secs >= 60)
@@ -1054,8 +1062,11 @@ int main(int argc, char **argv)
 		printf("put your finger on the sensor, lift it, repeat\n");
 		if (call(session, S_ENROLL, "enroll", w_hat, &hat, r_binder, &cancel))
 			goto out;
+		/* the spot under the finger: without it the sensor image is dark ("dirty") */
+		if (find_session())
+			overlay("start");
 		set_cancel(cancel);
-		ret = wait_done(120) ? 1 : 0;
+		ret = wait_done(600) ? 1 : 0;
 		call(session, S_REVOKE_CHALLENGE, "revokeChallenge", w_i64, &st.challenge, NULL,
 		     NULL);
 	} else {
@@ -1064,6 +1075,8 @@ int main(int argc, char **argv)
 		printf("touch the sensor\n");
 		if (call(session, S_AUTHENTICATE, "authenticate", w_i64, &op, r_binder, &cancel))
 			goto out;
+		if (find_session())
+			overlay("start");
 		set_cancel(cancel);
 		ret = wait_done(30);
 		ret = ret == 0 ? 0 : ret == 1 ? 1 : 2;

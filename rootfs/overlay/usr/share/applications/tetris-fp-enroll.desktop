@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Fingerabdruck einrichten
+Comment=Fingerabdruck registrieren, mit Hinweisen zu Dauer und Sensor
+Exec=/usr/local/bin/tetris-fp-enroll
+Icon=fingerprint
+Terminal=false
+Categories=Settings;

@@ -37,7 +37,7 @@ used through [libhybris](https://github.com/libhybris/libhybris).
 | Calls | ❌ | Outgoing calls connect, but without audio; incoming calls exist only on MediaTek's MIPC channel, not on AT, so ModemManager never sees them. Details in `rootfs/src/tetris-mipc`. Help welcome |
 | Standby (suspend) | ❌ | The SoC hangs in deep sleep. The screen can still turn off, but the CPU stays awake |
 | GPS | 🟡 | MediaTek GNSS HAL + `tetris-gnss` feed geoclue (receiver on only while an app asks). Satellites are found, a first fix not confirmed yet |
-| Fingerprint | ✅ | Under-display sensor unlocks the Phosh lock screen (`tetris-fpd`); enroll with `sudo tetris-fp enroll`. Goodix HAL + Trustonic TEE, two kernel patches. The whole screen brightens while scanning. The phone has no NFC |
+| Fingerprint | ✅ | Under-display sensor unlocks the Phosh lock screen (`tetris-fpd`), tested with the vendor touch driver and with the mainline touch port. Enroll with the app "Fingerabdruck einrichten" (hints, touches left) or `sudo tetris-fp enroll`. Goodix HAL + Trustonic TEE, two kernel patches. The whole screen brightens while scanning. The phone has no NFC |
 
 ## How it is put together
 
@@ -318,8 +318,9 @@ is still tied to the Nothing kernel. "Blocker" says what has to change first. St
 | Standby (suspend) | open | The SoC hangs in deep sleep. Suspend is disabled (`sleep.conf.d/50-tetris-nosuspend.conf`) |
 | GPS first fix | open | Satellites are found; a fix is not confirmed. Needs a test outdoors and a check of `tetris-gnss` |
 | Headset jack | open | Analog headsets via a USB-C adapter, untested |
+| Fingerprint with the mainline touch port | done | The trusted app only captures after the touch controller reports a finger on the spot (FOD info register `0xE1`, Goodix `FINGER_DOWN` via the vendor notifier `touchpanel_event_call_notifier`) followed by `UI_READY` (`hbm_mode` and `ui_status` set by `tetris-fp` on each touch). The port reads the FOD info and calls the notifier (taken with `symbol_get`, no hard dependency); unlock tested on the phone with the port bound (`match, unlocking session`). On mainline 7.x the notifier module does not exist, so the Goodix side needs its own way to get the finger-down. Lessons from the vendor driver: set the FOD mode again a few times early in a scan (the controller drops it right after the display comes on), light more than the sensor radius (images otherwise stay just below the quality threshold), allow 10 min for enrollment, and run only one HAL client at a time (`tetris-fp list` during an enrollment cancels it) |
 | Battery gauge oops | open | `mt6375_battery` can NULL-dereference in `__wake_up_common` from `coulomb_irq` and reset the phone. Root cause not found; the probe path is correct. A pstore log of this is kept in `out/` |
-| Touch on mainline | in progress | `mainline/drivers/input/touchscreen/focaltech-ft3519.c` claims the FT3519 at boot (chip id 0x54, 1080x2400, 10 slots) and reports touches. Missing: gestures, double-tap wake, and the FOD/fingerprint mode of the vendor driver (the fingerprint unlock may depend on it, to be checked) |
+| Touch on mainline | in progress | `mainline/drivers/input/touchscreen/focaltech-ft3519.c` claims the FT3519 at boot (chip id 0x54, 1080x2400, 10 slots) and reports touches. The FOD/fingerprint path works (fingerprint unlock tested). Missing: gestures, double-tap wake |
 | Vibration on mainline | in progress | The port builds for 7.3 and runs on 6.1. Mainline-only check still open |
 
 ### What a mainline 7.x kernel needs
@@ -331,7 +332,7 @@ is still tied to the Nothing kernel. "Blocker" says what has to change first. St
 | Haptics (RT6010) | vendor `haptic` driver, ~4400 lines | port in `mainline/drivers/input/misc/rt6010-haptic.c` | mainline 7.3 builds; runs on 6.1 | in progress |
 | Battery / charger | vendor `mt6375` gauge and charger, patched (`patches/kernel_device_modules/0001`) | check whether 7.x has MT6375 support | the gauge crash above | open |
 | Display panels | vendor `s6e8fc3x02` and others, HBM patch `0003` | upstream DRM panel drivers, plus the HBM notification | the notification to the fingerprint driver is ours | open |
-| Touch | vendor `focaltech` ft3519 with resume patch `0004`; basic port in `mainline/` runs on 6.1 | the basic read path works on the phone (chip 0x54). Gestures and FOD are missing; the resume fix `0004` has to be carried over | gestures and FOD (fingerprint mode) | in progress |
+| Touch | vendor `focaltech` ft3519 with resume patch `0004`; basic port in `mainline/` runs on 6.1 | the read path and the FOD path work on the phone (chip 0x54, fingerprint unlock). Gestures are missing; the resume fix `0004` has to be carried over | gestures; the FOD notifier is vendor-only | in progress |
 | Sensors | SCP sensor hub `/dev/hf_manager` (vendor) | an upstream sensor-hub driver, or keep the vendor one | `tetris-sensors` talks to `/dev/hf_manager` | blocked |
 | Audio codec | MT6369 plus aw882xx, UCM profile | ALSA codec drivers for MT6369 and aw882xx | patch `0002` (mixer switch read) | open |
 | GPU (Mali-G615) | vendor Mali kernel module, used through libhybris | a mainline DRM driver for this GPU | check whether a mainline driver supports the G615. Until then the Halium container and libhybris stay | blocked |

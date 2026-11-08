@@ -1,0 +1,1 @@
+alarm ALL=(root) NOPASSWD: /usr/local/bin/tetris-fp enroll, /usr/local/bin/tetris-fp list

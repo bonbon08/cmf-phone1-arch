@@ -36,6 +36,22 @@
 #define FT_FOD_DISABLE		0
 #define FT_FOD_ENABLE		1
 #define FT_FOD_UNLOCK		2
+#define FT_REG_FOD_INFO		0xE1	/* finger on the sensor spot, vendor fts_read_fod_info() */
+#define FT_FOD_INFO_LEN		9
+#define FT_FOD_INFO_ID		0x26
+#define FT_KEY_GESTURE_FOD	0xF9	/* the key code the vendor driver reports */
+
+/*
+ * The Goodix fingerprint driver learns about a finger on the spot through the vendor
+ * notifier module touchpanel_event_notify (FINGER_DOWN/UP to its HAL). It is taken at
+ * run time, so the driver has no hard dependency on it and builds without it.
+ */
+enum { FT_TP_FPEVENT_UP, FT_TP_FPEVENT_DOWN };
+struct ft_tp_coordinate {
+	int x;
+	int y;
+};
+int touchpanel_event_call_notifier(unsigned long val, void *data);
 #define FT_TOUCH_LEN		(2 + 6 * FT_MAX_POINTS)
 #define FT_EVENT_DOWN		0
 #define FT_EVENT_UP		1
@@ -57,23 +73,66 @@ struct ft3519 {
 	struct gpio_desc *dvdd;
 	u32 max_x;
 	u32 max_y;
-	struct mutex lock;	/* serialises I2C reads from the IRQ thread and probe */
+	struct mutex lock;	/* serialises I2C access and the FOD state (IRQ thread, procfs) */
 	int fod_state;		/* what /proc/touchpanel/fod_mode last set */
 	struct proc_dir_entry *proc_dir;
+	bool fp_down;		/* the chip's FOD info: finger on the spot */
+	bool fp_down_report;	/* what was last reported */
+	u16 fp_x, fp_y;
+	int (*tp_notify)(unsigned long val, void *data);
 };
 
-/* Reads the touch report; the chip answers a read after register 0x01 */
-static int ft_read_report(struct ft3519 *ft, u8 *buf)
+/* The chip answers a read after writing the register address */
+static int ft_read(struct ft3519 *ft, u8 reg, u8 *buf, u16 len)
 {
-	u8 reg = FT_REG_TOUCH;
 	struct i2c_msg msgs[2] = {
 		{ .addr = ft->client->addr, .flags = 0, .len = 1, .buf = &reg },
-		{ .addr = ft->client->addr, .flags = I2C_M_RD, .len = FT_TOUCH_LEN, .buf = buf },
+		{ .addr = ft->client->addr, .flags = I2C_M_RD, .len = len, .buf = buf },
 	};
 	int ret;
 
 	ret = i2c_transfer(ft->client->adapter, msgs, ARRAY_SIZE(msgs));
 	return ret == ARRAY_SIZE(msgs) ? 0 : (ret < 0 ? ret : -EIO);
+}
+
+static int ft_read_report(struct ft3519 *ft, u8 *buf)
+{
+	return ft_read(ft, FT_REG_TOUCH, buf, FT_TOUCH_LEN);
+}
+
+/* Like the vendor driver: with the mode on, read the FOD info after every report */
+static void ft_read_fod(struct ft3519 *ft)
+{
+	u8 en, val[FT_FOD_INFO_LEN];
+
+	if (ft->fod_state == FT_FOD_DISABLE)
+		return;
+	if (ft_read(ft, FT_REG_FOD_EN, &en, 1) || en != FT_REG_FOD_VALUE)
+		return;
+	if (ft_read(ft, FT_REG_FOD_INFO, val, sizeof(val)) || val[1] != FT_FOD_INFO_ID)
+		return;
+	if (val[8] == 0)
+		ft->fp_down = true;
+	else if (val[8] == 1)
+		ft->fp_down = false;
+	ft->fp_x = (val[4] << 8) | val[5];
+	ft->fp_y = (val[6] << 8) | val[7];
+}
+
+/* Reports a change of the finger on the spot: key event and the fingerprint notifier */
+static void ft_report_fod(struct ft3519 *ft)
+{
+	struct ft_tp_coordinate c = { .x = ft->fp_x, .y = ft->fp_y };
+
+	if (ft->fp_down == ft->fp_down_report)
+		return;
+	ft->fp_down_report = ft->fp_down;
+	input_report_key(ft->input, FT_KEY_GESTURE_FOD, ft->fp_down);
+	input_sync(ft->input);
+	if (!ft->tp_notify)
+		ft->tp_notify = symbol_get(touchpanel_event_call_notifier);
+	if (ft->tp_notify)
+		ft->tp_notify(ft->fp_down ? FT_TP_FPEVENT_DOWN : FT_TP_FPEVENT_UP, &c);
 }
 
 /* Decodes the report exactly like focaltech_core.c (TOUCH_DEFAULT protocol) */
@@ -113,6 +172,8 @@ static irqreturn_t ft_irq_thread(int irq, void *data)
 		return IRQ_HANDLED;
 	}
 	count = ft_parse_report(ft, buf, pts);
+	ft_read_fod(ft);
+	ft_report_fod(ft);
 	mutex_unlock(&ft->lock);
 	if (count < 0)
 		return IRQ_HANDLED;
@@ -185,6 +246,14 @@ static int ft_read_chip_id(struct ft3519 *ft, u8 *id)
 	return i2c_transfer(ft->client->adapter, msgs, ARRAY_SIZE(msgs)) == ARRAY_SIZE(msgs) ? 0 : -EIO;
 }
 
+static void ft_put_notify(void *data)
+{
+	struct ft3519 *ft = data;
+
+	if (ft->tp_notify)
+		symbol_put(touchpanel_event_call_notifier);
+}
+
 static void ft_remove_proc(void *data)
 {
 	struct ft3519 *ft = data;
@@ -235,6 +304,7 @@ static ssize_t ft_fod_write(struct file *file, const char __user *ubuf, size_t c
 		break;
 	case FT_FOD_DISABLE:
 		ret = ft_write_reg(ft, FT_REG_FOD_EN, 0);
+		ft->fp_down = false;
 		break;
 	case FT_FOD_UNLOCK:
 		break;
@@ -243,6 +313,8 @@ static ssize_t ft_fod_write(struct file *file, const char __user *ubuf, size_t c
 	}
 	if (!ret)
 		ft->fod_state = mode;
+	if (mode == FT_FOD_DISABLE)
+		ft_report_fod(ft);	/* a finger still reported as down goes up */
 	mutex_unlock(&ft->lock);
 
 	return ret ? ret : count;
@@ -288,6 +360,7 @@ static int ft_init_input(struct ft3519 *ft)
 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, ft->max_x - 1, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, ft->max_y - 1, 0, 0);
 	__set_bit(INPUT_PROP_DIRECT, input->propbit);
+	input_set_capability(input, EV_KEY, FT_KEY_GESTURE_FOD);
 	input_set_drvdata(input, ft);
 
 	ret = input_register_device(input);
@@ -366,6 +439,7 @@ static int ft_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	if (ret)
 		return dev_err_probe(dev, ret, "cannot create /proc/touchpanel\n");
 	devm_add_action_or_reset(dev, ft_remove_proc, ft);
+	devm_add_action_or_reset(dev, ft_put_notify, ft);
 
 	dev_info(dev, "touch ready, %ux%u\n", ft->max_x, ft->max_y);
 	return 0;
