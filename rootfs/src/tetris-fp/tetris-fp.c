@@ -563,9 +563,6 @@ struct sensor {
 /* only while an enroll/authenticate operation runs: otherwise a tap on the sensor spot
  * would switch the panel to high brightness for nothing */
 static volatile bool g_scanning;
-/* enroll: the high brightness stays on for the whole operation, the sensor needs it
- * between the touches too; the touch thread then leaves hbm_mode alone */
-static volatile bool g_hold_hbm;
 
 struct touch_args {
 	AIBinder *session;
@@ -665,18 +662,14 @@ static void *touch_thread(void *arg)
 				p.major = p.minor = major > 0 ? major : 1;
 				call(t->session, S_POINTER_DOWN, "onPointerDown", w_pointer_down,
 				     &p, NULL, NULL);
-				if (!g_hold_hbm) {
-					panel_feature("hbm_mode", 1);
-					panel_feature("ui_status", 1);
-				}
+				panel_feature("hbm_mode", 1);
+				panel_feature("ui_status", 1);
 				call(t->session, S_UI_READY, "onUiReady", NULL, NULL, NULL, NULL);
 			} else if (!on && down) {
 				call(t->session, S_POINTER_UP, "onPointerUp", w_i32, &p.id, NULL,
 				     NULL);
-				if (!g_hold_hbm) {
-					panel_feature("ui_status", 0);
-					panel_feature("hbm_mode", 0);
-				}
+				panel_feature("ui_status", 0);
+				panel_feature("hbm_mode", 0);
 			}
 			down = on;
 		}
@@ -728,7 +721,6 @@ static bool st_finished(void)
 static void cleanup(void)
 {
 	g_scanning = false;
-	g_hold_hbm = false;
 	if (g_cancel)
 		call(g_cancel, 1, "cancel", NULL, NULL, NULL, NULL);
 	if (g_scanned) {
@@ -864,6 +856,11 @@ static void unlockd(AIBinder *session)
 		 * to normal soon */
 		do {
 			ret = wait_done(1);
+			/* right after the display comes on the touch controller can still be
+			 * resuming and drop the mode switch: no FOD finger-down, no capture.
+			 * Switch it on again a few times early in the scan. */
+			if (secs == 0 || secs == 1 || secs == 3)
+				fod_mode(1);
 		} while ((ret == -ETIMEDOUT || ret == 1) && ++secs < 60 && session_locked() &&
 			 display_on());
 		if (secs >= 60)
@@ -1069,11 +1066,7 @@ int main(int argc, char **argv)
 		if (find_session())
 			overlay("start");
 		set_cancel(cancel);
-		fod_mode(1);
-		g_hold_hbm = true;
-		panel_feature("ui_status", 1);
-		panel_feature("hbm_mode", 1);
-		ret = wait_done(120) ? 1 : 0;
+		ret = wait_done(600) ? 1 : 0;
 		call(session, S_REVOKE_CHALLENGE, "revokeChallenge", w_i64, &st.challenge, NULL,
 		     NULL);
 	} else {
@@ -1085,7 +1078,6 @@ int main(int argc, char **argv)
 		if (find_session())
 			overlay("start");
 		set_cancel(cancel);
-		fod_mode(1);
 		ret = wait_done(30);
 		ret = ret == 0 ? 0 : ret == 1 ? 1 : 2;
 	}

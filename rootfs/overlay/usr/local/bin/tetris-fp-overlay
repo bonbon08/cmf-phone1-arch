@@ -11,6 +11,9 @@ gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import Gtk, Gdk, GtkLayerShell, GLib
 
 x, y, r = (int(v) for v in sys.argv[1:4]) if len(sys.argv) >= 4 else (540, 2109, 93)
+# light more than the sensor itself: with only its radius lit, enrollment images come out
+# just below the trusted app's quality threshold (check q(13) failed)
+r = int(r * 1.4)
 PHYS_W = 1080
 
 win = Gtk.Window()
