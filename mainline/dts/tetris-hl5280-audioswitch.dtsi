@@ -9,8 +9,8 @@
  *
  * The node has no interrupt and no supply in the vendor tree either.
  *
- * The port is linked to the Type-C connector once the MT6375 TCPC has a mainline
- * driver (it sends the audio accessory mode and the orientation to this switch).
+ * The port is linked to the Type-C connector of the MT6375 TCPC (tetris-mt6375.dtsi),
+ * which sends the audio accessory mode and the orientation to this switch.
  */
 
 &i2c3 {
@@ -22,7 +22,7 @@
 
 		port {
 			hl5280_sbu: endpoint {
-				/* remote-endpoint = <&typec_sbu>; with the MT6375 TCPC */
+				remote-endpoint = <&typec_sbu>;
 			};
 		};
 	};

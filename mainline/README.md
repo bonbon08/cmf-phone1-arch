@@ -17,6 +17,10 @@ hooks) to mainline Linux, so that the phone can run a current mainline kernel (7
 | `dts/tetris-hl5280-audioswitch.dtsi` | the USB-C audio switch for mainline's `fsa4480` driver (no port needed) |
 | `dts/tetris-aw88261-speaker.dtsi` | the speaker amplifier for mainline's `aw88261` driver (no port needed) |
 | `tests/check_aw88261_acf.py` | checks the amplifier's ACF file against the mainline loader |
+| `drivers/mfd/mt6375.c` | MT6375 SubPMIC core (regmap over its I2C addresses, regmap-irq) |
+| `drivers/usb/typec/tcpm/tcpci_mt6375.c` | MT6375 Type-C port controller on the TCPCI core |
+| `Documentation/devicetree/bindings/mfd/mediatek,mt6375.yaml` | binding for both |
+| `dts/tetris-mt6375.dtsi` | MT6375 node with the USB-C connector (linked to the HL5280) |
 | `apply-to-tree.sh` | adds the driver to a kernel tree (sources, binding, Kconfig, Makefile) |
 | `tests/check_haptic_config.py` | checks the firmware file `haptic_config.bin` against the driver's rules |
 
