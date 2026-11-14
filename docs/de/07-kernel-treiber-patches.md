@@ -29,6 +29,7 @@ Pakete libhybris, wlroots und ModemManager wenden die Pkgbuild-Skripte auf dem T
 | `patches/kernel_device_modules/0002-mt6369-readable-pmic-reg-clear.patch` | Audio-Codec MT6369 | Ergänzt eine Leseroutine für einen Mixer-Schalter | Pflicht für Audio-Erkennung (PipeWire) |
 | `patches/kernel_device_modules/0003-s6e8fc3x02-hbm-mode-notifies-fingerprint.patch` | Display-Treiber | Meldet dem Fingerabdruck-Treiber, wenn der Hochhelligkeitsmodus (HBM) an ist | Pflicht für den Fingerabdruck |
 | `patches/kernel_device_modules/0004-ft3519-resume-like-suspended.patch` | Touch-Treiber | Stellt den Touch nach dem Aufwachen korrekt wieder her | Pflicht (sonst bleibt der Touch tot) |
+| `patches/kernel_device_modules/0005-mtk-battery-kernel-gauge-charge-full.patch` | Akku-Treiber | Setzt den Ladestand auf 100 %, wenn der Akku voll ist | Pflicht (sonst bleibt der Ladestand zu niedrig, und das Laden scheint ewig zu dauern) |
 | `patches/kernel_modules/0001-bt-mt66xx-optional-linux-hci.patch` | Bluetooth (`mt66xx`) | Optionale Variante: Bluetooth als Linux-HCI-Gerät | Nein, nur mit `TETRIS_LINUX_HCI=1` (experimentell) |
 | `patches/libhybris/0001-egl-stub-EGL_EXT_device_query-for-GTK4.patch` | libhybris | Gibt EGL-Erweiterungen an, die GTK 4 verlangt | Pflicht für GTK-4-Apps |
 | `patches/libhybris/0002-egl-surfaceless-mesa-platform-for-mutter.patch` | libhybris | Unterstützt die „surfaceless“-EGL-Plattform für den GNOME-Shell (Mutter) | Pflicht für das Desktop-Profil |
@@ -52,7 +53,7 @@ Kernel. `pidfd_prepare()` ist im Kernel bereits vorhanden.
 **Wo wirksam:** Nur im Desktop-Profil, aber der Kernel wird für alle Profile mit diesem Patch
 gebaut.
 
-### 7.2.2 Akku: Warteschlange vor dem Anfordern (`kernel_device_modules/0001`)
+### 7.2.2 Akku: Warteschlange vor dem Anfordern, voller Akku (`kernel_device_modules/0001`, `0005`)
 
 **Problem:** Der Treiber des Akku-Messgeräts (`mtk-battery`) fordert eine Unterbrechung an,
 bevor seine Warteschlange (`wait_que`) initialisiert ist. Im Fehlerfall dereferenziert der
@@ -60,6 +61,17 @@ Kernel einen NULL-Zeiger.
 
 **Lösung:** Die Initialisierung der Warteschlange wird vor das Anfordern der Unterbrechung
 verschoben. Dazu kommt ein Kommentar im Patch, der die Ursache erklärt.
+
+**Voller Akku (`kernel_device_modules/0005`):** Ohne Androids `fuelgauged` läuft das
+Messgerät mit seinem Kernel-Algorithmus. Der zählt nur Coulomb ab dem in der RTC gespeicherten
+Ladestand und korrigiert ihn nie. Das Ladegerät MT6375 meldet außerdem nie „voll“, weil es
+nach dem Ladeende das Laden wieder einschaltet. Ein Fehler im gespeicherten Ladestand blieb
+deshalb für immer: Das Telefon zeigte stundenlang 49 % bei vollem Akku (4,45 V, kein Strom).
+Der Patch nimmt den Akku als voll an, wenn ein Ladegerät steckt, VBAT mindestens 4400 mV ist
+und drei periodische Aktualisierungen (3 min) lang weniger als 150 mA fließen. Der neue
+Handler für `FG_INTR_CHR_FULL` setzt dann den Startpunkt auf 100 %, setzt den Coulomb-Zähler
+zurück und den angezeigten Ladestand auf 100 %. Im Kernel-Log: `fg_check_chr_full ... charge
+full` und `fgr_chr_full_handler`.
 
 ### 7.2.3 Audio: Lesbarer Mixer-Schalter (`kernel_device_modules/0002`)
 
