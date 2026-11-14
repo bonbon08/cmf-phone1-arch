@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * CMF Phone 1 (Tetris): speaker amplifier on I2C6, for the mainline aw88261 driver
+ * (sound/soc/codecs/aw88261.c). No port is needed: the chip the vendor tree calls
+ * "awinic,aw882xx_smartpa" answers with chip id 0x2113 (AW88261_CHIP_ID).
+ *
+ * firmware-name points at the vendor's ACF file, which passes mainline's checks and has a
+ * default block for the AW88261 on channel 0 (profile "Music"); check it with
+ * mainline/tests/check_aw88261_acf.py. Copy it from /vendor/firmware to /lib/firmware.
+ *
+ * The vendor node has no reset pin and no supply; its irq-gpio (GPIO 41) is not used by
+ * the mainline driver. The DAI is linked into the sound card of the MT6878 AFE, which has
+ * no mainline driver yet.
+ */
+
+&i2c6 {
+	speaker-amp@34 {
+		compatible = "awinic,aw88261";
+		reg = <0x34>;
+		#sound-dai-cells = <0>;
+		firmware-name = "aw882xx_acf.bin";
+		awinic,audio-channel = <0>;
+		sound-name-prefix = "Speaker";
+	};
+};
