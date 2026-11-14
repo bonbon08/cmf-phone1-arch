@@ -15,6 +15,8 @@ hooks) to mainline Linux, so that the phone can run a current mainline kernel (7
 | `Documentation/devicetree/bindings/leds/ti,lm3644.yaml` | its device-tree binding |
 | `dts/tetris-lm3644-flash.dtsi` | the flash LED node for the CMF Phone 1 |
 | `dts/tetris-hl5280-audioswitch.dtsi` | the USB-C audio switch for mainline's `fsa4480` driver (no port needed) |
+| `dts/tetris-aw88261-speaker.dtsi` | the speaker amplifier for mainline's `aw88261` driver (no port needed) |
+| `tests/check_aw88261_acf.py` | checks the amplifier's ACF file against the mainline loader |
 | `apply-to-tree.sh` | adds the driver to a kernel tree (sources, binding, Kconfig, Makefile) |
 | `tests/check_haptic_config.py` | checks the firmware file `haptic_config.bin` against the driver's rules |
 
