@@ -181,7 +181,7 @@ start can be shown on the phone with `systemd-analyze critical-chain`.
 | `tetris-boot-once` | sh | part of `tetris-boot-as`, as root: writes `/var/lib/tetris-mode/once` and reboots |
 | `tetris-boot-success` | Python | sets the A/B state in `misc` to "successful" (CRC-protected block at offset `0x800`) |
 | `tetris-thermal` | sh | thermal protection: three throttling steps, power off at 100 °C SoC, 58 °C board or 60 °C battery |
-| `tetris-usb-role` | sh | sets the USB data role (device when a cable is plugged in) |
+| `tetris-usb-role` | sh | sets the USB data role (device when a PC or charger is plugged in; with an OTG adapter the Type-C stack keeps host mode for keyboards and sticks) |
 | `tetris-map-super` | Python | creates the Android partitions from `super` as mapper devices (`dm-linear`) |
 | `tetris-mount-apexes` | Python | binds the APEX modules of the Halium system into the container |
 | `tetris-android-prepare` | sh | preparation of the container (see [03](03-architecture.md#33-the-halium-container)) |
