@@ -14,6 +14,7 @@ hooks) to mainline Linux, so that the phone can run a current mainline kernel (7
 | `drivers/leds/flash/leds-lm3644.c` | LM3644 dual flash LED driver, LED flash class device (`white:torch`) |
 | `Documentation/devicetree/bindings/leds/ti,lm3644.yaml` | its device-tree binding |
 | `dts/tetris-lm3644-flash.dtsi` | the flash LED node for the CMF Phone 1 |
+| `dts/tetris-hl5280-audioswitch.dtsi` | the USB-C audio switch for mainline's `fsa4480` driver (no port needed) |
 | `apply-to-tree.sh` | adds the driver to a kernel tree (sources, binding, Kconfig, Makefile) |
 | `tests/check_haptic_config.py` | checks the firmware file `haptic_config.bin` against the driver's rules |
 

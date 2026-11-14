@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * CMF Phone 1 (Tetris): USB-C audio switch on I2C3, for the mainline fsa4480 driver
+ * (drivers/usb/typec/mux/fsa4480.c). No driver of its own is needed: the HL5280 has
+ * the FSA4480 register map (0x04 switch enable, 0x05 select, 0x08-0x10 slow turn-on
+ * and delays, 0x12 function enable, 0x1e reset), and its device id 0x49 passes the
+ * driver's check (any value but 0). The vendor tree uses "mediatek,hl5280-audioswitch"
+ * and the MediaTek driver drivers/misc/mediatek/hl5280.
+ *
+ * The node has no interrupt and no supply in the vendor tree either.
+ *
+ * The port is linked to the Type-C connector once the MT6375 TCPC has a mainline
+ * driver (it sends the audio accessory mode and the orientation to this switch).
+ */
+
+&i2c3 {
+	typec-mux@42 {
+		compatible = "fcs,fsa4480";
+		reg = <0x42>;
+		mode-switch;
+		orientation-switch;
+
+		port {
+			hl5280_sbu: endpoint {
+				/* remote-endpoint = <&typec_sbu>; with the MT6375 TCPC */
+			};
+		};
+	};
+};
