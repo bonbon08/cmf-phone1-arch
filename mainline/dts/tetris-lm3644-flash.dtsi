@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * CMF Phone 1 (Tetris): flash LED driver on I2C6, for the mainline driver
+ * (drivers/leds/flash/leds-lm3644.c). The vendor tree uses the compatible
+ * "mediatek,lm3644", pinctrl states hwen-high/-low and hwen-high1/-low1 for the
+ * enable pins, and flash@0/flash@1 child nodes.
+ *
+ * gpio 155 and 151 are the enable pins (the vendor driver sets both together).
+ * The name comes out as white:flash; Phosh's torch looks for *:torch, so a
+ * label = "white:torch" keeps it working there.
+ */
+#include <dt-bindings/leds/common.h>
+
+&i2c6 {
+	flash-led@63 {
+		compatible = "ti,lm3644";
+		reg = <0x63>;
+		enable-gpios = <&pio 155 GPIO_ACTIVE_HIGH>, <&pio 151 GPIO_ACTIVE_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@0 {
+			reg = <0>;
+			label = "white:torch";
+			function = LED_FUNCTION_FLASH;
+			color = <LED_COLOR_ID_WHITE>;
+			led-max-microamp = <200000>;
+			flash-max-microamp = <1500000>;
+			flash-max-timeout-us = <400000>;
+		};
+
+		led@1 {
+			reg = <1>;
+		};
+	};
+};
