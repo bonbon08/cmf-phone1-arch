@@ -55,9 +55,11 @@ check_owner() { # check_owner <i2c device> <expected driver>
 check_owner 0-005f rt6010-haptic
 check_owner 2-0038 focaltech-ft3519
 
-scp_ "$T/haptic-ff-test.py" "$T/touch-test.py" "alarm@172.16.42.1:/tmp/"
+scp_ "$T/haptic-ff-test.py" "$T/touch-test.py" "$T/gesture-test.py" "alarm@172.16.42.1:/tmp/"
 echo "== vibrating"
 "$SSH" "echo '$PASS' | sudo -S -p '' python3 /tmp/haptic-ff-test.py 3 300"
 echo "== touch: tap the screen now (15 s)"
 "$SSH" "echo '$PASS' | sudo -S -p '' python3 /tmp/touch-test.py 15" || true
+echo "== double-tap to wake: the screen goes off, double-tap it (20 s)"
+"$SSH" "echo '$PASS' | sudo -S -p '' python3 /tmp/gesture-test.py 20" || true
 echo "Done."

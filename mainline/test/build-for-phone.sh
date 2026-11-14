@@ -22,7 +22,7 @@ done
 printf 'obj-m := %s\n' "$mods" > "$EXT/Makefile"
 
 make -C "$R/src/kernel-6.1" O="$OUT" M="$EXT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
-    CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)" modules
+    CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)" ${W:+W=$W} modules
 for ko in "$EXT"/*.ko; do
     echo "built: $ko"
     modinfo "$ko" | grep -E '^(vermagic|description):'

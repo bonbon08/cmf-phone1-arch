@@ -5,14 +5,16 @@
  * Mainline-style port of the basic read path of the vendor driver
  * drivers/input/touchscreen/FT3519 (focaltech_core.c, focaltech_i2c.c): the
  * touch report at register 0x01 (two header bytes, then six bytes per point),
- * reported as Linux multitouch slots. Left out on purpose: gestures, pen, proximity,
- * firmware flashing and the factory tests of the vendor driver.
+ * reported as Linux multitouch slots, the fingerprint (FOD) spot, and screen off with
+ * double-tap to wake. Left out on purpose: the other gestures, pen, proximity, firmware
+ * flashing and the factory tests of the vendor driver.
  *
  * Like the RT6010 port, it claims the chip at boot: the initramfs loads it right
  * before the vendor focaltech_tp.ko, so the vendor driver finds the device taken.
  */
 
 #include <linux/delay.h>
+#include <linux/workqueue.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
@@ -40,6 +42,11 @@
 #define FT_FOD_INFO_LEN		9
 #define FT_FOD_INFO_ID		0x26
 #define FT_KEY_GESTURE_FOD	0xF9	/* the key code the vendor driver reports */
+#define FT_REG_POWER_MODE	0xA5
+#define FT_POWER_MODE_SLEEP	0x03
+#define FT_REG_GESTURE_EN	0xD0	/* gesture mode, the chip's mode with the screen off */
+#define FT_REG_GESTURE_OUT	0xD3	/* gesture id, then the point count */
+#define FT_GESTURE_DOUBLETAP	0x24
 
 /*
  * The Goodix fingerprint driver learns about a finger on the spot through the vendor
@@ -52,6 +59,18 @@ struct ft_tp_coordinate {
 	int y;
 };
 int touchpanel_event_call_notifier(unsigned long val, void *data);
+
+/*
+ * Screen on and off come from the vendor display notifier (module mtk_disp_notify, values
+ * from its mtk_disp_notify.h), taken at run time like the one above. Without it (mainline)
+ * the controller simply stays awake with the screen off.
+ */
+#define FT_DISP_EARLY_EVENT_BLANK	0x00
+#define FT_DISP_EVENT_BLANK		0x01
+#define FT_DISP_BLANK_UNBLANK		0
+#define FT_DISP_BLANK_POWERDOWN		1
+int mtk_disp_notifier_register(const char *source, struct notifier_block *nb);
+int mtk_disp_notifier_unregister(struct notifier_block *nb);
 #define FT_TOUCH_LEN		(2 + 6 * FT_MAX_POINTS)
 #define FT_EVENT_DOWN		0
 #define FT_EVENT_UP		1
@@ -80,6 +99,14 @@ struct ft3519 {
 	bool fp_down_report;	/* what was last reported */
 	u16 fp_x, fp_y;
 	int (*tp_notify)(unsigned long val, void *data);
+	struct input_dev *gesture_input;	/* KEY_WAKEUP for double-tap, a keyboard to the compositor */
+	bool double_tap;	/* /proc/touchpanel/double_tap_enable */
+	bool suspended;		/* screen off */
+	bool asleep;		/* suspended in sleep mode (IRQ off), not in gesture mode */
+	bool irq_wake;
+	struct notifier_block disp_nb;
+	int (*disp_unregister)(struct notifier_block *nb);
+	struct work_struct resume_work;
 };
 
 /* The chip answers a read after writing the register address */
@@ -135,6 +162,24 @@ static void ft_report_fod(struct ft3519 *ft)
 		ft->tp_notify(ft->fp_down ? FT_TP_FPEVENT_DOWN : FT_TP_FPEVENT_UP, &c);
 }
 
+/* In gesture mode (screen off), like the vendor fts_gesture_readdata() */
+static void ft_read_gesture(struct ft3519 *ft)
+{
+	u8 en, g[2];
+
+	if (ft_read(ft, FT_REG_GESTURE_EN, &en, 1) || en != 1)
+		return;
+	if (ft_read(ft, FT_REG_GESTURE_OUT, g, sizeof(g)))
+		return;
+	dev_dbg(ft->dev, "gesture 0x%02x\n", g[0]);
+	if (g[0] != FT_GESTURE_DOUBLETAP || !ft->double_tap)
+		return;
+	input_report_key(ft->gesture_input, KEY_WAKEUP, 1);
+	input_sync(ft->gesture_input);
+	input_report_key(ft->gesture_input, KEY_WAKEUP, 0);
+	input_sync(ft->gesture_input);
+}
+
 /* Decodes the report exactly like focaltech_core.c (TOUCH_DEFAULT protocol) */
 static int ft_parse_report(struct ft3519 *ft, const u8 *buf, struct ft_point *pts)
 {
@@ -174,6 +219,12 @@ static irqreturn_t ft_irq_thread(int irq, void *data)
 	count = ft_parse_report(ft, buf, pts);
 	ft_read_fod(ft);
 	ft_report_fod(ft);
+	if (ft->suspended) {
+		/* screen off: no touches, only the fingerprint spot above and gestures */
+		ft_read_gesture(ft);
+		mutex_unlock(&ft->lock);
+		return IRQ_HANDLED;
+	}
 	mutex_unlock(&ft->lock);
 	if (count < 0)
 		return IRQ_HANDLED;
@@ -300,10 +351,13 @@ static ssize_t ft_fod_write(struct file *file, const char __user *ubuf, size_t c
 	mutex_lock(&ft->lock);
 	switch (mode) {
 	case FT_FOD_ENABLE:
-		ret = ft_write_reg(ft, FT_REG_FOD_EN, FT_REG_FOD_VALUE);
+		/* the chip in sleep mode doesn't answer; resume sets the mode again */
+		if (!ft->asleep)
+			ret = ft_write_reg(ft, FT_REG_FOD_EN, FT_REG_FOD_VALUE);
 		break;
 	case FT_FOD_DISABLE:
-		ret = ft_write_reg(ft, FT_REG_FOD_EN, 0);
+		if (!ft->asleep)
+			ret = ft_write_reg(ft, FT_REG_FOD_EN, 0);
 		ft->fp_down = false;
 		break;
 	case FT_FOD_UNLOCK:
@@ -328,16 +382,201 @@ static const struct proc_ops ft_fod_fops = {
 	.proc_release = single_release,
 };
 
+/* /proc/touchpanel/double_tap_enable: 1 (default) wakes the screen on a double tap */
+static int ft_dt_show(struct seq_file *s, void *unused)
+{
+	struct ft3519 *ft = s->private;
+
+	seq_printf(s, "%d\n", ft->double_tap);
+	return 0;
+}
+
+static int ft_dt_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ft_dt_show, pde_data(inode));
+}
+
+static ssize_t ft_dt_write(struct file *file, const char __user *ubuf, size_t count,
+			   loff_t *ppos)
+{
+	struct ft3519 *ft = pde_data(file_inode(file));
+	bool on;
+	int ret;
+
+	ret = kstrtobool_from_user(ubuf, count, &on);
+	if (ret)
+		return ret;
+	mutex_lock(&ft->lock);
+	ft->double_tap = on;	/* takes effect at the next screen off */
+	mutex_unlock(&ft->lock);
+	return count;
+}
+
+static const struct proc_ops ft_dt_fops = {
+	.proc_open = ft_dt_open,
+	.proc_write = ft_dt_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
 static int ft_init_proc(struct ft3519 *ft)
 {
 	ft->proc_dir = proc_mkdir("touchpanel", NULL);
 	if (!ft->proc_dir)
 		return -ENOMEM;
-	if (!proc_create_data("fod_mode", 0664, ft->proc_dir, &ft_fod_fops, ft)) {
+	if (!proc_create_data("fod_mode", 0664, ft->proc_dir, &ft_fod_fops, ft) ||
+	    !proc_create_data("double_tap_enable", 0664, ft->proc_dir, &ft_dt_fops, ft)) {
 		remove_proc_subtree("touchpanel", NULL);
 		return -ENOMEM;
 	}
 	return 0;
+}
+
+static void ft_release_fingers(struct ft3519 *ft)
+{
+	int i;
+
+	for (i = 0; i < FT_MAX_POINTS; i++) {
+		input_mt_slot(ft->input, i);
+		input_mt_report_slot_inactive(ft->input);
+	}
+	input_mt_sync_frame(ft->input);
+	input_sync(ft->input);
+}
+
+/* Writes the gesture mode register until the chip reads it back, like the vendor driver */
+static int ft_set_gesture_mode(struct ft3519 *ft, u8 on)
+{
+	u8 state = 0xFF;
+	int i;
+
+	for (i = 0; i < 5; i++) {
+		ft_write_reg(ft, FT_REG_GESTURE_EN, on);
+		usleep_range(1000, 2000);
+		if (!ft_read(ft, FT_REG_GESTURE_EN, &state, 1) && state == on)
+			return 0;
+	}
+	return -EIO;
+}
+
+/*
+ * Screen off, like the vendor fts_ts_suspend(): gesture mode while double-tap or the
+ * fingerprint spot need the chip (the vendor writes 0xFF to 0xD1-0xD8 for all gestures,
+ * 0x7F to 0xD1 for none), else sleep mode with the interrupt off.
+ */
+static void ft_suspend(struct ft3519 *ft)
+{
+	bool fod = ft->fod_state != FT_FOD_DISABLE;
+	static const u8 gesture_regs[] = { 0xD1, 0xD2, 0xD5, 0xD6, 0xD7, 0xD8 };
+	int i;
+
+	mutex_lock(&ft->lock);
+	if (ft->suspended)
+		goto out;
+	if (ft->double_tap || fod) {
+		if (ft->double_tap)
+			for (i = 0; i < ARRAY_SIZE(gesture_regs); i++)
+				ft_write_reg(ft, gesture_regs[i], 0xFF);
+		else
+			ft_write_reg(ft, 0xD1, 0x7F);
+		if (fod)
+			ft_write_reg(ft, FT_REG_FOD_EN, FT_REG_FOD_VALUE);
+		if (ft_set_gesture_mode(ft, 1))
+			dev_err(ft->dev, "gesture mode failed\n");
+		ft->irq_wake = !enable_irq_wake(ft->client->irq);
+	} else {
+		/* nosync: a running handler waits for ft->lock, then sees suspended */
+		disable_irq_nosync(ft->client->irq);
+		ft_write_reg(ft, FT_REG_POWER_MODE, FT_POWER_MODE_SLEEP);
+		ft->asleep = true;
+	}
+	ft->suspended = true;
+	ft_release_fingers(ft);
+	dev_info(ft->dev, "screen off, %s mode\n", ft->asleep ? "sleep" : "gesture");
+out:
+	mutex_unlock(&ft->lock);
+}
+
+/*
+ * Screen on, like the vendor fts_ts_resume(): a reset brings the chip back from either
+ * mode, except while a finger is on the fingerprint spot (the scan is still running).
+ * The way back follows the way in, which is what the vendor resume patch fixed.
+ */
+static void ft_resume_work(struct work_struct *work)
+{
+	struct ft3519 *ft = container_of(work, struct ft3519, resume_work);
+
+	mutex_lock(&ft->lock);
+	if (!ft->suspended)
+		goto out;
+	if (ft->irq_wake) {
+		disable_irq_wake(ft->client->irq);
+		ft->irq_wake = false;
+	}
+	if (ft->asleep || !ft->fp_down_report) {
+		ft_power_on(ft);
+	} else if (ft_set_gesture_mode(ft, 0)) {
+		dev_err(ft->dev, "leaving gesture mode failed\n");
+	}
+	if (ft->fod_state != FT_FOD_DISABLE)
+		ft_write_reg(ft, FT_REG_FOD_EN, FT_REG_FOD_VALUE);
+	if (ft->asleep) {
+		ft->asleep = false;
+		enable_irq(ft->client->irq);
+	}
+	ft->suspended = false;
+	ft_release_fingers(ft);
+	dev_info(ft->dev, "screen on\n");
+out:
+	mutex_unlock(&ft->lock);
+}
+
+static int ft_disp_notify(struct notifier_block *nb, unsigned long event, void *data)
+{
+	struct ft3519 *ft = container_of(nb, struct ft3519, disp_nb);
+	int blank = data ? *(int *)data : -1;
+
+	/* off before the panel goes dark (no touches on a black screen), on after it is lit */
+	if (event == FT_DISP_EARLY_EVENT_BLANK && blank == FT_DISP_BLANK_POWERDOWN) {
+		cancel_work_sync(&ft->resume_work);
+		ft_suspend(ft);
+	} else if (event == FT_DISP_EVENT_BLANK && blank == FT_DISP_BLANK_UNBLANK) {
+		schedule_work(&ft->resume_work);
+	}
+	return NOTIFY_OK;
+}
+
+static void ft_disp_unregister(void *data)
+{
+	struct ft3519 *ft = data;
+
+	ft->disp_unregister(&ft->disp_nb);
+	symbol_put(mtk_disp_notifier_unregister);
+	cancel_work_sync(&ft->resume_work);
+}
+
+static void ft_init_disp_notify(struct ft3519 *ft)
+{
+	int (*reg)(const char *source, struct notifier_block *nb);
+
+	INIT_WORK(&ft->resume_work, ft_resume_work);
+	reg = symbol_get(mtk_disp_notifier_register);
+	if (!reg) {
+		dev_info(ft->dev, "no display notifier, touch stays on with the screen off\n");
+		return;
+	}
+	ft->disp_unregister = symbol_get(mtk_disp_notifier_unregister);
+	ft->disp_nb.notifier_call = ft_disp_notify;
+	if (!ft->disp_unregister || reg(FT_NAME, &ft->disp_nb)) {
+		dev_warn(ft->dev, "cannot register the display notifier\n");
+		if (ft->disp_unregister)
+			symbol_put(mtk_disp_notifier_unregister);
+		symbol_put(mtk_disp_notifier_register);
+		return;
+	}
+	symbol_put(mtk_disp_notifier_register);
+	devm_add_action_or_reset(ft->dev, ft_disp_unregister, ft);
 }
 
 static int ft_init_input(struct ft3519 *ft)
@@ -367,6 +606,18 @@ static int ft_init_input(struct ft3519 *ft)
 	if (ret)
 		return ret;
 	ft->input = input;
+
+	input = devm_input_allocate_device(ft->dev);
+	if (!input)
+		return -ENOMEM;
+	input->name = "fts_ts gestures";
+	input->id.bustype = BUS_I2C;
+	input->phys = "i2c/focaltech-ft3519/gestures";
+	input_set_capability(input, EV_KEY, KEY_WAKEUP);
+	ret = input_register_device(input);
+	if (ret)
+		return ret;
+	ft->gesture_input = input;
 	return 0;
 }
 
@@ -391,6 +642,7 @@ static int ft_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		return -ENOMEM;
 	ft->client = client;
 	ft->dev = dev;
+	ft->double_tap = true;
 	mutex_init(&ft->lock);
 	i2c_set_clientdata(client, ft);
 
@@ -440,6 +692,7 @@ static int ft_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		return dev_err_probe(dev, ret, "cannot create /proc/touchpanel\n");
 	devm_add_action_or_reset(dev, ft_remove_proc, ft);
 	devm_add_action_or_reset(dev, ft_put_notify, ft);
+	ft_init_disp_notify(ft);
 
 	dev_info(dev, "touch ready, %ux%u\n", ft->max_x, ft->max_y);
 	return 0;
