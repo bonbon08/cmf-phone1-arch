@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * CMF Phone 1 (Tetris): MT6375 SubPMIC on I2C5, for the mainline-style drivers in
+ * mainline/drivers/mfd/mt6375.c (core) and mainline/drivers/usb/typec/tcpm/tcpci_mt6375.c
+ * (Type-C port controller on the TCPCI core).
+ *
+ * The vendor tree uses the same compatibles; its TCPC node carries the vendor PD stack's
+ * properties (tcpc,*, wd,* water detection, pd-data), which mainline describes with a
+ * usb-c-connector instead. Interrupt numbers are the vendor's (dt-bindings/mfd/mt6375.h):
+ * 120 pd_evt. The core's own interrupt is EINT 15, level low.
+ *
+ * PD: sink 5 V only for now. Higher voltages need a charger driver that takes them (the
+ * MT6375 charger has none in mainline yet), and the source side needs the charger's OTG
+ * boost as vbus-supply.
+ */
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/usb/pd.h>
+
+&i2c5 {
+	pmic@34 {
+		compatible = "mediatek,mt6375";
+		reg = <0x34>;
+		interrupts-extended = <&pio 15 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		wakeup-source;
+
+		tcpc {
+			compatible = "mediatek,mt6375-tcpc";
+			interrupts = <120>;
+			interrupt-names = "pd_evt";
+
+			connector {
+				compatible = "usb-c-connector";
+				label = "USB-C";
+				data-role = "dual";
+				power-role = "dual";
+				try-power-role = "sink";
+				source-pdos = <PDO_FIXED(5000, 1500, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP |
+								 PDO_FIXED_USB_COMM)>;
+				sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP |
+							       PDO_FIXED_USB_COMM)>;
+				op-sink-microwatt = <15000000>;
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+						typec_hs: endpoint {
+							/* remote-endpoint = <&usb_hs_role_switch>; (mtu3, no mainline node yet) */
+						};
+					};
+
+					port@2 {
+						reg = <2>;
+						typec_sbu: endpoint {
+							remote-endpoint = <&hl5280_sbu>;
+						};
+					};
+				};
+			};
+		};
+	};
+};

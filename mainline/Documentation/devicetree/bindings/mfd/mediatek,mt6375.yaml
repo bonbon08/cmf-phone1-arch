@@ -1,0 +1,112 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/mfd/mediatek,mt6375.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: MediaTek MT6375 SubPMIC
+
+maintainers:
+  - CMF Phone 1 (Tetris) port
+
+description: |
+  The MT6375 combines a switching charger, a USB Type-C port controller (TCPCI
+  with USB PD), a fuel gauge and ADCs. It answers on several I2C addresses
+  (0x34 PMU, 0x4E TCPC, 0x1A gauge, 0x4A and 0x64 housekeeping, 0x3F test);
+  the node is the PMU address. Its 128 event bits are an interrupt controller
+  for the child devices, numbered as in the vendor's dt-bindings/mfd/mt6375.h
+  (for example 120 pd_evt, 44 adc_donei).
+
+properties:
+  compatible:
+    const: mediatek,mt6375
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  interrupt-controller: true
+
+  "#interrupt-cells":
+    const: 1
+
+  wakeup-source: true
+
+  tcpc:
+    type: object
+    additionalProperties: false
+    description: USB Type-C port controller on the TCPCI core.
+
+    properties:
+      compatible:
+        const: mediatek,mt6375-tcpc
+
+      interrupts:
+        maxItems: 1
+
+      interrupt-names:
+        const: pd_evt
+
+      vbus-supply:
+        description: VBUS source for the port (the charger's OTG boost).
+
+      connector:
+        type: object
+        $ref: /schemas/connector/usb-connector.yaml#
+        unevaluatedProperties: false
+
+    required:
+      - compatible
+      - interrupts
+      - connector
+
+patternProperties:
+  "^(chg|adc|mtk-gauge)$":
+    type: object
+    description: Charger, ADC and fuel gauge; no mainline drivers yet.
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - interrupt-controller
+  - "#interrupt-cells"
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/irq.h>
+    #include <dt-bindings/usb/pd.h>
+
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        pmic@34 {
+            compatible = "mediatek,mt6375";
+            reg = <0x34>;
+            interrupts-extended = <&pio 15 IRQ_TYPE_LEVEL_LOW>;
+            interrupt-controller;
+            #interrupt-cells = <1>;
+
+            tcpc {
+                compatible = "mediatek,mt6375-tcpc";
+                interrupts = <120>;
+                interrupt-names = "pd_evt";
+
+                connector {
+                    compatible = "usb-c-connector";
+                    label = "USB-C";
+                    data-role = "dual";
+                    power-role = "dual";
+                    try-power-role = "sink";
+                    source-pdos = <PDO_FIXED(5000, 1500, PDO_FIXED_DUAL_ROLE)>;
+                    sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE)>;
+                    op-sink-microwatt = <15000000>;
+                };
+            };
+        };
+    };
