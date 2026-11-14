@@ -182,7 +182,7 @@ genaue Ablauf eines Starts zeigt `systemd-analyze critical-chain` auf dem Telefo
 | `tetris-boot-once` | sh | Teil von `tetris-boot-as` als root: schreibt `/var/lib/tetris-mode/once` und startet neu |
 | `tetris-boot-success` | Python | Setzt den A/B-Zustand in `misc` auf „erfolgreich“ (CRC-geschützter Block bei Offset `0x800`) |
 | `tetris-thermal` | sh | Wärmeschutz: drei Drosselstufen, Abschalten bei 100 °C SoC, 58 °C Platine oder 60 °C Akku |
-| `tetris-usb-role` | sh | Setzt die USB-Datenrolle (Gerät, wenn ein Kabel steckt) |
+| `tetris-usb-role` | sh | Setzt die USB-Datenrolle (Gerät, wenn ein PC oder Ladegerät steckt; mit OTG-Adapter behält der Type-C-Stack den Host-Modus für Tastaturen und Sticks) |
 | `tetris-map-super` | Python | Legt die Android-Partitionen aus `super` als Mapper-Geräte an (`dm-linear`) |
 | `tetris-mount-apexes` | Python | Bindet die APEX-Module des Halium-Systems für den Container ein |
 | `tetris-android-prepare` | sh | Vorbereitung des Containers (siehe [03](03-architektur.md#33-der-halium-container)) |

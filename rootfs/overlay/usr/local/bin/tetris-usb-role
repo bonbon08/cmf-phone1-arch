@@ -1,12 +1,29 @@
 #!/bin/sh
-# USB data role from the cable: device (USB networking, ssh) while a Type-C partner is
-# connected, none otherwise. The initramfs forces "device" because mtu3 only connects
-# once some data role is set; left like that, the USB clocks (univpll) stay on without a
-# cable, which costs power and keeps the SoC from deeper idle states.
+# USB data role from the cable: device (USB networking, ssh) while a Type-C partner that is a
+# host (PC, charger) is connected, none otherwise. The initramfs forces "device" because mtu3
+# only connects once some data role is set; left like that, the USB clocks (univpll) stay on
+# without a cable, which costs power and keeps the SoC from deeper idle states.
+# With an OTG adapter (keyboard, stick) the Type-C stack makes the port the host itself and
+# starts xHCI: then the port's data role reads "[host]" and is left alone. Setting "device"
+# there tore the host controller down 50 ms after it came up.
 # Called by 78-tetris-usb-role.rules on partner add/remove and once at boot.
+port=/sys/class/typec/port0
 role=none
-[ -e /sys/class/typec/port0-partner ] && role=device
+otg() {   # the port is the host or supplies VBUS (OTG adapter)
+    case "$(cat $port/data_role 2>/dev/null) $(cat $port/power_role 2>/dev/null)" in
+        *"[host]"*|*"[source]"*) return 0 ;;
+    esac
+    return 1
+}
+if [ -e $port-partner ]; then
+    # the partner shows up a moment before the Type-C stack has switched the roles
+    sleep 0.5
+    otg && { echo "tetris-usb-role: host (Type-C stack)"; exit 0; }
+    role=device
+fi
 for r in /sys/class/usb_role/*/role; do
-    [ -e "$r" ] && echo "$role" > "$r"
+    [ -e "$r" ] || continue
+    [ "$(cat "$r")" = host ] && [ $role = device ] && { echo "tetris-usb-role: host kept"; exit 0; }
+    echo "$role" > "$r"
 done
 echo "tetris-usb-role: $role"
