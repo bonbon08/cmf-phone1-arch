@@ -306,6 +306,8 @@ hwcomposer backend (patches/wlroots/0002).
 
 ## Roadmap: open items and the move to Linux 7.x
 
+The next steps with their starting points are in [TODO.md](TODO.md).
+
 Goal: the phone should run a mainline 7.x kernel instead of Nothing's 6.1 kernel. The table tracks what
 is still tied to the Nothing kernel. "Blocker" says what has to change first. Status values: **done**,
 **built for 7.x, tested on the vendor kernel** (builds against mainline 7.3 and works on the phone with
