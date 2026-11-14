@@ -62,10 +62,48 @@ properties:
       - interrupts
       - connector
 
-patternProperties:
-  "^(chg|adc|mtk-gauge)$":
+  chg:
     type: object
-    description: Charger, ADC and fuel gauge; no mainline drivers yet.
+    additionalProperties: false
+    description: Switching charger with BC1.2 detection and the OTG boost.
+
+    properties:
+      compatible:
+        const: mediatek,mt6375-chg
+
+      interrupts:
+        maxItems: 6
+
+      interrupt-names:
+        items:
+          - const: fl_pwr_rdy
+          - const: fl_detach
+          - const: fl_bc12_dn
+          - const: fl_vbus_ov
+          - const: fl_chg_tout
+          - const: fl_wdt
+
+      monitored-battery:
+        description: |
+          simple-battery node; constant-charge-voltage-max-microvolt,
+          constant-charge-current-max-microamp and charge-term-current-microamp
+          set the charge limits.
+
+      usb-otg-vbus:
+        type: object
+        $ref: /schemas/regulator/regulator.yaml#
+        unevaluatedProperties: false
+        description: OTG boost (4.85 V to 6 V, 0.5 A to 2.4 A), VBUS for the TCPC.
+
+    required:
+      - compatible
+      - interrupts
+      - interrupt-names
+
+patternProperties:
+  "^(adc|mtk-gauge)$":
+    type: object
+    description: ADC and fuel gauge; no mainline drivers yet.
 
 required:
   - compatible

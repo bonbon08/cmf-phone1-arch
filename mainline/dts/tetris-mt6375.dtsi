@@ -9,12 +9,27 @@
  * usb-c-connector instead. Interrupt numbers are the vendor's (dt-bindings/mfd/mt6375.h):
  * 120 pd_evt. The core's own interrupt is EINT 15, level low.
  *
- * PD: sink 5 V only for now. Higher voltages need a charger driver that takes them (the
- * MT6375 charger has none in mainline yet), and the source side needs the charger's OTG
- * boost as vbus-supply.
+ * PD: sink 5 V only for now; higher voltages need the charge pump (SC8541) and the fast
+ * charging logic of the vendor framework. VBUS as source (OTG) is the charger's boost.
+ *
+ * Charger (mainline/drivers/power/supply/mt6375-charger.c): the charge limits come from
+ * the battery node, the values the vendor tree sets (CV 4.49 V, 2 A, end of charge at
+ * 500 mA); the vendor tree also sets MIVR 4.4 V, 14.5 V VBUS OVP, a 10 h timer and IR
+ * compensation 32 mV / 16.7 mOhm, which the driver programs itself. The OTG boost keeps
+ * the voltage the bootloader left (5.4 V on this phone) unless constrained here.
  */
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/usb/pd.h>
+
+/ {
+	battery: battery {
+		compatible = "simple-battery";
+		constant-charge-voltage-max-microvolt = <4490000>;
+		constant-charge-current-max-microamp = <2000000>;
+		charge-term-current-microamp = <500000>;
+		charge-full-design-microamp-hours = <5000000>;
+	};
+};
 
 &i2c5 {
 	pmic@34 {
@@ -25,8 +40,25 @@
 		#interrupt-cells = <1>;
 		wakeup-source;
 
+		chg {
+			compatible = "mediatek,mt6375-chg";
+			interrupts = <0>, <1>, <31>, <8>, <11>, <23>;
+			interrupt-names = "fl_pwr_rdy", "fl_detach", "fl_bc12_dn",
+					  "fl_vbus_ov", "fl_chg_tout", "fl_wdt";
+			monitored-battery = <&battery>;
+
+			otg_vbus: usb-otg-vbus {
+				regulator-name = "mt6375-otg-vbus";
+				regulator-min-microvolt = <5000000>;
+				regulator-max-microvolt = <5400000>;
+				regulator-min-microamp = <500000>;
+				regulator-max-microamp = <2400000>;
+			};
+		};
+
 		tcpc {
 			compatible = "mediatek,mt6375-tcpc";
+			vbus-supply = <&otg_vbus>;
 			interrupts = <120>;
 			interrupt-names = "pd_evt";
 
