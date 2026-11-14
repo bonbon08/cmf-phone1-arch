@@ -4,6 +4,7 @@
 #   sudo scripts/build-rootfs.sh --finish   # re-apply overlay/services + shrink on an existing image
 #   sudo PROFILE=server scripts/build-rootfs.sh   # headless server: Docker, Ollama, no Phosh
 #   sudo PROFILE=desktop scripts/build-rootfs.sh  # server + GNOME over RDP
+#   sudo TIMEZONE=Europe/Vienna scripts/build-rootfs.sh  # time zone (default Europe/Berlin)
 # Output: out/rootfs.img (raw ext4) + out/rootfs.simg (sparse, for `fastboot flash userdata`).
 # The image is small; the phone grows it to the full userdata partition on first boot.
 set -euo pipefail
@@ -98,6 +99,8 @@ if [[ $PROFILE != phone ]]; then
     chown -R 0:0 "$MNT/etc/ssh/sshd_config.d" "$MNT/etc/docker" "$MNT/etc/sysctl.d" "$MNT/usr/local/bin/tetris-mode" "$MNT/opt/tetris-server"
 fi
 chmod 0440 "$MNT/etc/sudoers.d/10-wheel"
+# Without /etc/localtime everything shows UTC (an hour behind in German winter time)
+ln -sfn "../usr/share/zoneinfo/${TIMEZONE:-Europe/Berlin}" "$MNT/etc/localtime"
 chmod 0600 "$MNT/etc/NetworkManager/conf.d/"*.conf "$MNT/etc/NetworkManager/system-connections/"*.nmconnection
 
 # The project key (out/ssh, used by scripts/phone-ssh.sh; created here if missing) and the
