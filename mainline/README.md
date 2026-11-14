@@ -19,8 +19,9 @@ hooks) to mainline Linux, so that the phone can run a current mainline kernel (7
 | `tests/check_aw88261_acf.py` | checks the amplifier's ACF file against the mainline loader |
 | `drivers/mfd/mt6375.c` | MT6375 SubPMIC core (regmap over its I2C addresses, regmap-irq) |
 | `drivers/usb/typec/tcpm/tcpci_mt6375.c` | MT6375 Type-C port controller on the TCPCI core |
-| `Documentation/devicetree/bindings/mfd/mediatek,mt6375.yaml` | binding for both |
-| `dts/tetris-mt6375.dtsi` | MT6375 node with the USB-C connector (linked to the HL5280) |
+| `drivers/power/supply/mt6375-charger.c` | MT6375 charger (power supply, BC1.2, OTG boost regulator) |
+| `Documentation/devicetree/bindings/mfd/mediatek,mt6375.yaml` | binding for core, TCPC and charger |
+| `dts/tetris-mt6375.dtsi` | MT6375 node: charger with battery data and OTG regulator, USB-C connector (linked to the HL5280) |
 | `apply-to-tree.sh` | adds the driver to a kernel tree (sources, binding, Kconfig, Makefile) |
 | `tests/check_haptic_config.py` | checks the firmware file `haptic_config.bin` against the driver's rules |
 
