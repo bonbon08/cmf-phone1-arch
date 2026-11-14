@@ -5,6 +5,8 @@
 !/.gitignore
 !/LICENSE
 !/README.md
+!/TODO.md
+!/CLAUDE.md
 !/docs/
 !/scripts/
 !/pkgbuilds/
