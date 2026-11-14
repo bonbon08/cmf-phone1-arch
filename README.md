@@ -25,7 +25,7 @@ used through [libhybris](https://github.com/libhybris/libhybris).
 | Sensors | ✅ | Accelerometer, light, proximity: read straight from the SCP sensor hub (`tetris-sensors`, drop-in for iio-sensor-proxy) |
 | WLAN | ✅ | MediaTek gen4m driver |
 | Bluetooth | ✅ | |
-| Battery / charging | ✅ | |
+| Battery / charging | ✅ | The level goes to 100 % at end of charge (kernel gauge, patch `0005`) |
 | Audio (speaker, mic) | ✅ | UCM config. The phone has no 3.5 mm jack; analog headsets via a passive USB-C adapter should be detected (codec "Headset Jack"), untested |
 | Vibration | ✅ | RT6010 haptic driver, a mainline-style port in `mainline/`. It claims the chip at boot and exposes the motor as a force-feedback input device, which feedbackd uses directly. The old `tetris-vibra` bridge only runs if the port is not built |
 | Torch | ✅ | Phosh quick setting (`tetris-torch`, flash LED via uleds) |
@@ -321,7 +321,7 @@ a proprietary blob or a driver nobody has written yet).
 | GPS first fix | open | Satellites are found; a fix is not confirmed. Needs a test outdoors and a check of `tetris-gnss` |
 | Headset jack | open | Analog headsets via a USB-C adapter, untested |
 | Fingerprint with the mainline touch port | done | The trusted app only captures after the touch controller reports a finger on the spot (FOD info register `0xE1`, Goodix `FINGER_DOWN` via the vendor notifier `touchpanel_event_call_notifier`) followed by `UI_READY` (`hbm_mode` and `ui_status` set by `tetris-fp` on each touch). The port reads the FOD info and calls the notifier (taken with `symbol_get`, no hard dependency); unlock tested on the phone with the port bound (`match, unlocking session`). On mainline 7.x the notifier module does not exist, so the Goodix side needs its own way to get the finger-down. Lessons from the vendor driver: set the FOD mode again a few times early in a scan (the controller drops it right after the display comes on), light more than the sensor radius (images otherwise stay just below the quality threshold), allow 10 min for enrollment, and run only one HAL client at a time (`tetris-fp list` during an enrollment cancels it) |
-| Battery gauge oops | open | `mt6375_battery` can NULL-dereference in `__wake_up_common` from `coulomb_irq` and reset the phone. Root cause not found; the probe path is correct. A pstore log of this is kept in `out/` |
+| Battery gauge oops | probably fixed, watch | `mt6375_battery` NULL-dereferenced in `__wake_up_common` from `coulomb_irq` and reset the phone. The only log (`out/panic/`, still in the phone's pstore as a stale record) is from kernel build #1, before patch `0001`, which initialises `wait_que` before the coulomb IRQs are requested. No new record since. One unexplained reset on 14 Nov (first boot after an empty battery, journal ends at 480 s without an oops) |
 | Touch on mainline | built for 7.x, tested on the vendor kernel | `mainline/drivers/input/touchscreen/focaltech-ft3519.c` builds against mainline 7.3 without warnings (arm64, `W=1`, clang 23); not run on a 7.x kernel yet. Tested on the vendor kernel 6.1: claims the FT3519 at boot (chip id 0x54, 1080x2400, 10 slots), touches, fingerprint unlock (FOD path). Missing: gestures, double-tap wake |
 | Vibration on mainline | built for 7.x, tested on the vendor kernel | `mainline/drivers/input/misc/rt6010-haptic.c` builds against mainline 7.3; not run on a 7.x kernel yet. Tested on the vendor kernel 6.1: force-feedback vibration |
 
@@ -332,7 +332,7 @@ a proprietary blob or a driver nobody has written yet).
 | Kernel config | `kernel/linux.config` on top of Nothing's defconfig | a mainline defconfig plus our fragment | list the options we need, check which exist upstream | open |
 | SO_PEERPIDFD | backported (`patches/kernel/0001`) | upstream since 6.5 | drop the patch | done on paper, check on 7.x |
 | Haptics (RT6010) | vendor `haptic` driver, ~4400 lines | port in `mainline/drivers/input/misc/rt6010-haptic.c` | mainline 7.3 builds; runs on 6.1 | built for 7.x, tested on the vendor kernel |
-| Battery / charger | vendor `mt6375` gauge and charger, patched (`patches/kernel_device_modules/0001`) | check whether 7.x has MT6375 support | the gauge crash above | open |
+| Battery / charger | vendor `mt6375` gauge and charger, patched (`patches/kernel_device_modules/0001`, `0005`) | check whether 7.x has MT6375 support | the gauge crash above | open |
 | Display panels | vendor `s6e8fc3x02` and others, HBM patch `0003` | upstream DRM panel drivers, plus the HBM notification | the notification to the fingerprint driver is ours | open |
 | Touch | vendor `focaltech` ft3519 with resume patch `0004`; basic port in `mainline/` runs on 6.1 | the read path and the FOD path work on the phone (chip 0x54, fingerprint unlock). Gestures are missing; the resume fix `0004` has to be carried over | gestures; the FOD notifier is vendor-only | built for 7.x, tested on the vendor kernel |
 | Sensors | SCP sensor hub `/dev/hf_manager` (vendor) | an upstream sensor-hub driver, or keep the vendor one | `tetris-sensors` talks to `/dev/hf_manager` | blocked |

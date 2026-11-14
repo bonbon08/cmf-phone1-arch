@@ -28,6 +28,7 @@ wlroots and ModemManager are patched by their build scripts on the phone.
 | `patches/kernel_device_modules/0002-mt6369-readable-pmic-reg-clear.patch` | audio codec MT6369 | adds a read routine for a mixer switch | required for audio detection (PipeWire) |
 | `patches/kernel_device_modules/0003-s6e8fc3x02-hbm-mode-notifies-fingerprint.patch` | display driver | tells the fingerprint driver when high-brightness mode (HBM) is on | required for the fingerprint |
 | `patches/kernel_device_modules/0004-ft3519-resume-like-suspended.patch` | touch driver | restores touch correctly after wake-up | required (otherwise touch stays dead) |
+| `patches/kernel_device_modules/0005-mtk-battery-kernel-gauge-charge-full.patch` | battery driver | sets the charge level to 100 % when the battery is full | required (otherwise the level stays too low and charging seems to take forever) |
 | `patches/kernel_modules/0001-bt-mt66xx-optional-linux-hci.patch` | Bluetooth (`mt66xx`) | optional variant: Bluetooth as a Linux HCI device | no, only with `TETRIS_LINUX_HCI=1` (experimental) |
 | `patches/libhybris/0001-egl-stub-EGL_EXT_device_query-for-GTK4.patch` | libhybris | advertises EGL extensions that GTK 4 requires | required for GTK 4 apps |
 | `patches/libhybris/0002-egl-surfaceless-mesa-platform-for-mutter.patch` | libhybris | supports the "surfaceless" EGL platform for the GNOME shell (Mutter) | required for the desktop profile |
@@ -51,13 +52,22 @@ doesn't support pidfd").
 **Where it has an effect:** only in the desktop profile, but the kernel is built with this patch for all
 profiles.
 
-### 7.2.2 Battery: wait queue before requesting (`kernel_device_modules/0001`)
+### 7.2.2 Battery: wait queue before requesting, full battery (`kernel_device_modules/0001`, `0005`)
 
 **Problem:** the driver of the battery gauge (`mtk-battery`) requests an interrupt before its wait queue
 (`wait_que`) is initialised. In the failure case the kernel dereferences a NULL pointer.
 
 **Solution:** the initialisation of the wait queue is moved in front of the interrupt request. The patch
 also contains a comment that explains the cause.
+
+**Full battery (`kernel_device_modules/0005`):** without Android's `fuelgauged` the gauge runs its kernel
+algorithm. That one only counts coulombs from the level saved in the RTC and never corrects it. The MT6375
+charger also never reports "full", because it turns charging on again after end of charge. An error in the
+saved level therefore stayed for good: the phone showed 49 % for hours with a full battery (4.45 V, no
+current). The patch treats a battery as full when a charger is connected, VBAT is at least 4400 mV and less
+than 150 mA flow for three periodic updates (3 min) in a row. The new handler for `FG_INTR_CHR_FULL` then
+sets the start point to 100 %, resets the coulomb counter and sets the displayed level to 100 %. In the
+kernel log: `fg_check_chr_full ... charge full` and `fgr_chr_full_handler`.
 
 ### 7.2.3 Audio: readable mixer switch (`kernel_device_modules/0002`)
 

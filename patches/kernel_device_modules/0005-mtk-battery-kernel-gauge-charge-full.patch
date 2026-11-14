@@ -1,0 +1,99 @@
+diff --git a/drivers/power/nt_supply/mtk_battery.c b/drivers/power/nt_supply/mtk_battery.c
+index 7532c83..90a51f0 100755
+--- a/drivers/power/nt_supply/mtk_battery.c
++++ b/drivers/power/nt_supply/mtk_battery.c
+@@ -3445,6 +3445,41 @@ void fg_nafg_monitor(struct mtk_battery *gm)
+ 
+ }
+ 
++/*
++ * Tetris Linux: the MT6375 charger keeps re-enabling charging after end of charge and
++ * never reports POWER_SUPPLY_STATUS_FULL, so the kernel algorithm never hears of a full
++ * battery. Treat a charger with VBAT at least 4400 mV and under 150 mA into or out of
++ * the battery for three periodic updates (3 min) in a row as full. While it stays like
++ * that, sync again whenever the coulomb count has pulled the level under 100 %.
++ */
++#define TETRIS_FULL_VBAT	4400	/* mV */
++#define TETRIS_FULL_IBAT	1500	/* 0.1 mA */
++#define TETRIS_FULL_COUNT	3
++
++static void fg_check_chr_full(struct mtk_battery *gm)
++{
++	static int full_cnt;
++	int vbat, ibat;
++
++	if (gm->bs_data.bat_status == POWER_SUPPLY_STATUS_DISCHARGING) {
++		full_cnt = 0;
++		return;
++	}
++	vbat = gauge_get_int_property(GAUGE_PROP_BATTERY_VOLTAGE);
++	ibat = gauge_get_int_property(GAUGE_PROP_BATTERY_CURRENT);
++	if (vbat < TETRIS_FULL_VBAT || abs(ibat) >= TETRIS_FULL_IBAT) {
++		full_cnt = 0;
++		return;
++	}
++	if (full_cnt < TETRIS_FULL_COUNT)
++		full_cnt++;
++	if (full_cnt == TETRIS_FULL_COUNT && gm->ui_soc < 100) {
++		bm_err("[%s] vbat:%d ibat:%d ui_soc:%d, charge full\n",
++			__func__, vbat, ibat, gm->ui_soc);
++		notify_fg_chr_full(gm);
++	}
++}
++
+ /* ============================================================ */
+ /* periodic timer */
+ /* ============================================================ */
+@@ -3506,8 +3541,10 @@ static void fg_drv_update_hw_status(struct mtk_battery *gm)
+ 		WARN_ON(1);
+ 	}
+ 	/* kernel mode need regular update info */
+-	if (gm->algo.active == true)
++	if (gm->algo.active == true) {
++		fg_check_chr_full(gm);
+ 		battery_update(gm);
++	}
+ 
+ 	if (bat_get_debug_level() >= BMLOG_DEBUG_LEVEL)
+ 		ktime = ktime_set(10, 0);
+diff --git a/drivers/power/nt_supply/mtk_battery_algo.c b/drivers/power/nt_supply/mtk_battery_algo.c
+index c456710..fd0cd3e 100755
+--- a/drivers/power/nt_supply/mtk_battery_algo.c
++++ b/drivers/power/nt_supply/mtk_battery_algo.c
+@@ -1703,9 +1703,36 @@ void fgr_vbat2_l_int_handler(struct mtk_battery *gm)
+ 		pdata->vbat2_det_voltage3);
+ }
+ 
++/*
++ * Tetris Linux: the kernel algorithm only counts coulombs from the SOC kept in the
++ * RTC, so an error there stays forever (the phone stopped at 49 % with a full battery).
++ * On a full charge, take the battery as 100 %: D0 at full, coulomb counter from 0.
++ */
++void fgr_set_int1(struct mtk_battery *gm);
++
++void fgr_chr_full_handler(struct mtk_battery *gm)
++{
++	struct mtk_battery_algo *algo;
++
++	algo = &gm->algo;
++	bm_err("[%s] soc:%d ui_soc:%d -> 10000\n",
++		__func__, algo->soc, algo->ui_soc);
++
++	Set_fg_c_d0_by_ocv(gm, SOC_to_OCV_c(gm, 10000));
++	fg_adc_reset(gm);
++	fgr_update_c_dod(gm);
++	fgr_set_soc_by_vc_mode(gm);
++	algo->ui_soc = 10000;
++	fgr_set_int1(gm);
++}
++
+ void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num)
+ {
+ 	switch (intr_num) {
++	case FG_INTR_CHR_FULL:
++		fgr_chr_full_handler(gm);
++		fgr_int_end_flow(gm, FG_INTR_CHR_FULL);
++		break;
+ 	case FG_INTR_BAT_TMP_C_HT:
+ 		fgr_temp_c_int_handler(gm);
+ 		fgr_int_end_flow(gm, FG_INTR_BAT_TMP_HT);
