@@ -10,6 +10,10 @@ hooks) to mainline Linux, so that the phone can run a current mainline kernel (7
 | `drivers/input/misc/rt6010-haptic.c` | RT6010 haptic driver (LRA vibration motor), mainline port |
 | `Documentation/devicetree/bindings/input/richtek,rt6010-haptic.yaml` | device-tree binding |
 | `dts/tetris-rt6010-haptic.dtsi` | the node for the CMF Phone 1 in a mainline device tree |
+| `drivers/input/touchscreen/focaltech-ft3519.c` | FT3519 touch controller (multitouch, fingerprint spot, screen off, double-tap to wake) |
+| `drivers/leds/flash/leds-lm3644.c` | LM3644 dual flash LED driver, LED flash class device (`white:torch`) |
+| `Documentation/devicetree/bindings/leds/ti,lm3644.yaml` | its device-tree binding |
+| `dts/tetris-lm3644-flash.dtsi` | the flash LED node for the CMF Phone 1 |
 | `apply-to-tree.sh` | adds the driver to a kernel tree (sources, binding, Kconfig, Makefile) |
 | `tests/check_haptic_config.py` | checks the firmware file `haptic_config.bin` against the driver's rules |
 
@@ -97,3 +101,29 @@ rm -rf out/rt6010-ko && scripts/build-debug-boot.sh && scripts/flash-debug-b.sh
   `__wake_up_common` from `coulomb_irq`) is in the pstore log of an earlier boot. It is not in the
   haptic code path, but it can reset the phone at any time and is not fixed here.
 - The directory is for this repository only. Nothing here is meant for the mainline kernel.
+
+## Flash LED (`leds-lm3644`)
+
+Build and test like the others: `mainline/test/build-for-phone.sh` builds it into `out/rt6010-ko/`,
+`init` loads it right before the vendor `lm3644.ko`, and `tetris-torch.service` only starts when the port
+is not bound. Against mainline 7.3 it builds as an external module (`make M=<dir>` in
+`out/mainline-7.3`, `W=1`, no warnings); `CONFIG_LEDS_CLASS_FLASH` is needed.
+
+On the phone (`sudo` as needed):
+
+```sh
+L=/sys/class/leds/white:torch
+echo 133 > $L/brightness        # torch, max_brightness = led-max-microamp (default 200 mA per LED)
+echo 0 > $L/brightness
+echo 1 > $L/flash_strobe        # flash with flash_brightness (uA) for flash_timeout (us), ends by itself
+cat $L/flash_fault
+```
+
+- The chip answers with device id 0x0a, not the 0x02 of TI's LM3644: a register-compatible clone. The
+  current steps are the vendor driver's (8-bit codes, flash 2.94 mA + 5.87 mA per step, torch 0.75 mA +
+  1.51 mA per step).
+- The enable pins are GPIO 155 and 151. The vendor device tree only has pinctrl states for them, which
+  the driver uses when there is no `enable-gpios`.
+- Without the vendor driver there are no `lm3644-led0/1` V4L2 subdevices for `mtk_composite`. The camera
+  still works (`tetris-cam2probe 0` takes a 4096x3072 JPEG); Kamera does not use the flash.
+

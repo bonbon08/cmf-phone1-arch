@@ -1,5 +1,8 @@
 [Unit]
 Description=Flash LEDs as torch LED class device (white:torch, for Phosh)
+# Only with the vendor lm3644 driver. The leds-lm3644 port (mainline/) registers white:torch
+# itself and claims the chip at boot.
+ConditionPathExists=!/sys/bus/i2c/drivers/leds-lm3644/6-0063
 
 [Service]
 # insmod, not modprobe: depmod over the whole vendor module set picks wrong duplicates

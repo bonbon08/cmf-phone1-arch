@@ -59,6 +59,10 @@ load_stage() { # load_stage <list>  (stock order, deps via modules.dep; each nam
         if [ "$m" = focaltech_tp.ko ] && [ -e "$MODDIR/focaltech-ft3519.ko" ]; then
             modprobe focaltech-ft3519 && flog "init: focaltech-ft3519 claims the touch first"
         fi
+        # And the flash LED: an LED class device white:torch instead of the vendor V4L2 subdevices
+        if [ "$m" = lm3644.ko ] && [ -e "$MODDIR/leds-lm3644.ko" ]; then
+            modprobe leds-lm3644 && flog "init: leds-lm3644 claims the flash LED first"
+        fi
         if modprobe "${m%.ko}"; then loaded=$((loaded+1)); else failed=$((failed+1)); echo "init: FAIL $m"; fi
     done < "$MODDIR/$1"
     echo "init: $1 loaded=$loaded failed=$failed"

@@ -9,6 +9,7 @@ EXT=$R/out/rt6010-ko
 MOD_SRC=(
     "$R/mainline/drivers/input/misc/rt6010-haptic.c"
     "$R/mainline/drivers/input/touchscreen/focaltech-ft3519.c"
+    "$R/mainline/drivers/leds/flash/leds-lm3644.c"
 )
 export PATH=$R/toolchain/clang-r487747c/bin:$PATH
 

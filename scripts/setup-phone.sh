@@ -14,6 +14,8 @@
 #
 # Usage: setup-phone.sh <halium-system.img>
 #   PHOSH=1 setup-phone.sh ...   keeps Phosh as the shell instead of the Nothing shell
+#   NOTHING_SRC=<dir>            Nothing_Wayland checkout for setup-nothing.sh
+#   SUDO_PASS=...                if alarm's password is no longer "alarm"
 #   The image: LuneOS halium_arm64 GSI (webOS-ports/halium-images, release
 #   halium-luneos-20261005, halium_arm64 20261017-1); unpack it to the raw system.img.
 set -euo pipefail
@@ -23,10 +25,12 @@ SSH="$P/scripts/phone-ssh.sh"
 scp_() { scp -i "$P/out/ssh/id_ed25519" -o UserKnownHostsFile="$P/out/known_hosts" \
     -o StrictHostKeyChecking=accept-new "$@"; }
 PHONE=alarm@172.16.42.1
+PASS=${SUDO_PASS:-alarm}
+export SUDO_PASS=$PASS
 
 echo "== Halium system image"
 scp_ "$IMG" "$PHONE:system.img"
-"$SSH" 'echo alarm | sudo -S -p "" install -Dm644 system.img /var/lib/lxc/android/system.img && rm system.img'
+"$SSH" "echo '$PASS' | sudo -S -p '' install -Dm644 system.img /var/lib/lxc/android/system.img && rm system.img"
 
 echo "== sources and patches"
 "$SSH" 'rm -rf ~/libhybris-patches ~/mm-plugin-tetris ~/tetris-camera-app ~/tetris-gnss ~/tetris-fp; mkdir -p ~/libhybris-patches'
@@ -38,25 +42,25 @@ scp_ -r "$P/rootfs/src/tetris-gnss" "$PHONE:tetris-gnss"
 scp_ -r "$P/rootfs/src/tetris-fp" "$PHONE:tetris-fp"
 
 echo "== libhybris"
-"$SSH" '~/build-libhybris.sh'
+"$SSH" "SUDOPW='$PASS' ~/build-libhybris.sh"
 echo "== wlroots (hwcomposer backend)"
-"$SSH" '~/build-wlroots-phoc.sh'
+"$SSH" "SUDOPW='$PASS' ~/build-wlroots-phoc.sh"
 echo "== ModemManager plugin"
-"$SSH" '~/build-mm-plugin-tetris.sh'
+"$SSH" "SUDOPW='$PASS' ~/build-mm-plugin-tetris.sh"
 echo "== camera app"
-"$SSH" 'make -C ~/tetris-camera-app && echo alarm | sudo -S -p "" make -C ~/tetris-camera-app install'
+"$SSH" "make -C ~/tetris-camera-app && echo '$PASS' | sudo -S -p '' make -C ~/tetris-camera-app install"
 
 echo "== GPS"
-"$SSH" 'make -C ~/tetris-gnss && echo alarm | sudo -S -p "" sh -c "make -C ~/tetris-gnss install && systemctl enable tetris-gnss"'
+"$SSH" "make -C ~/tetris-gnss && echo '$PASS' | sudo -S -p '' sh -c 'make -C ~/tetris-gnss install && systemctl enable tetris-gnss'"
 
 echo "== fingerprint"
-"$SSH" 'make -C ~/tetris-fp && echo alarm | sudo -S -p "" sh -c "make -C ~/tetris-fp install && systemctl enable tetris-fp"'
+"$SSH" "make -C ~/tetris-fp && echo '$PASS' | sudo -S -p '' sh -c 'make -C ~/tetris-fp install && systemctl enable tetris-fp'"
 
 if [ -z "${PHOSH:-}" ]; then
     echo "== Nothing shell"
-    "$P/scripts/setup-nothing.sh"
+    "$P/scripts/setup-nothing.sh" ${NOTHING_SRC:+"$NOTHING_SRC"}
 fi
 
 echo "== GPU shell on, reboot"
-"$SSH" 'echo alarm | sudo -S -p "" sh -c "touch /etc/tetris-android/gpu-shell; systemctl reboot"' || true
+"$SSH" "echo '$PASS' | sudo -S -p '' sh -c 'touch /etc/tetris-android/gpu-shell; systemctl reboot'" || true
 echo "Done. After the reboot the shell starts on the GPU (falls back to software if that fails)."

@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/leds/ti,lm3644.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: LM3644 dual flash LED driver
+
+maintainers:
+  - CMF Phone 1 (Tetris) port
+
+description: |
+  The LM3644 drives two flash LED outputs over I2C, in torch or flash mode.
+  The driver exposes the outputs listed as child nodes as one LED flash class
+  device: both outputs of a dual-LED flash module light together. The first
+  child node carries the LED properties. Without child nodes both outputs are
+  used. The CMF Phone 1 has a register-compatible chip (device id 0x0a) with
+  8-bit current codes.
+
+properties:
+  compatible:
+    oneOf:
+      - const: ti,lm3644
+      - description: vendor device tree of the CMF Phone 1, same chip
+        const: mediatek,lm3644
+
+  reg:
+    maxItems: 1
+
+  enable-gpios:
+    description: HWEN and further enable pins (active high), all driven together.
+    minItems: 1
+    maxItems: 2
+
+  "#address-cells":
+    const: 1
+
+  "#size-cells":
+    const: 0
+
+patternProperties:
+  "^led@[01]$":
+    type: object
+    $ref: common.yaml#
+    unevaluatedProperties: false
+    properties:
+      reg:
+        description: LED output, 0 or 1.
+        maximum: 1
+
+      led-max-microamp:
+        description: Torch current of each output (default 200 mA).
+        minimum: 750
+        maximum: 386000
+
+      flash-max-microamp:
+        description: Flash current of each output (default 1.5 A).
+        minimum: 2940
+        maximum: 1500000
+
+      flash-max-timeout-us:
+        minimum: 200000
+        maximum: 1600000
+
+    required:
+      - reg
+
+required:
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    #include <dt-bindings/leds/common.h>
+
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        flash-led@63 {
+            compatible = "ti,lm3644";
+            reg = <0x63>;
+            enable-gpios = <&pio 155 GPIO_ACTIVE_HIGH>, <&pio 151 GPIO_ACTIVE_HIGH>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            led@0 {
+                reg = <0>;
+                function = LED_FUNCTION_FLASH;
+                color = <LED_COLOR_ID_WHITE>;
+                led-max-microamp = <200000>;
+                flash-max-microamp = <1500000>;
+                flash-max-timeout-us = <400000>;
+            };
+
+            led@1 {
+                reg = <1>;
+            };
+        };
+    };
